@@ -2,8 +2,7 @@ import random
 import tensorflow as tf
 
 from dqn.agent import Agent
-from dqn.environment import GymEnvironment, SimpleGymEnvironment
-from config import get_config
+from dqn.environment import GymEnvironment
 
 flags = tf.app.flags
 flags.DEFINE_string('model', 'nature', 'Type of model')
