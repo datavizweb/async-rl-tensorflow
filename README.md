@@ -2,6 +2,8 @@
 
 Tensorflow implementation of [Asynchronous Methods for Deep Reinforcement Learning](http://arxiv.org/abs/1602.01783).
 
+![model](assets/a3c.png)
+
 
 ## Requirements
 
@@ -18,7 +20,7 @@ First, install prerequisites with:
 
     $ pip install tqdm gym[all]
 
-To train a model for Breakout:
+To train a model for SpaceInvaders:
 
 (in progress)
 
@@ -26,6 +28,7 @@ To train a model for Breakout:
 ## References
 
 - [async_rl](https://github.com/muupan/async-rl)
+- [asynchronous computation in TensorFlow](http://stackoverflow.com/questions/34419645/asynchronous-computation-in-tensorflow)
 
 
 ## License
