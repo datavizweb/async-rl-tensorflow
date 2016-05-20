@@ -32,6 +32,10 @@ def conv2d(x,
 def linear(input_, output_size, stddev=0.02, bias_start=0.0, activation_fn=None, name='linear'):
   shape = input_.get_shape().as_list()
 
+  if len(shape) > 2:
+    input_ = tf.reshape(input_, [-1, reduce(lambda x, y: x * y, shape[1:])])
+    shape = input_.get_shape().as_list()
+
   with tf.variable_scope(name):
     w = tf.get_variable('Matrix', [shape[1], output_size], tf.float32,
         tf.random_normal_initializer(stddev=stddev))

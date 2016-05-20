@@ -1,15 +1,19 @@
+import cv2
 import gym
+import logging
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 class Environment(object):
-  def __init__(self, env_name, n_frame_skip, n_action_repeat,
-               dead_as_terminal, max_random_start,
-               screen_width=84, screen_height=84):
+  def __init__(self, env_name, n_action_repeat, max_random_start,
+               history_length, screen_height=84, screen_width=84):
     self.env = gym.make(env_name)
 
-    self.n_frame_skip = n_frame_skip
     self.n_action_repeat = n_action_repeat
-    self.dead_as_terminal = dead_as_terminal
     self.max_random_start = max_random_start
+
+    self.history_length = history_length
     self.action_size = self.env.action_space.n
 
     self.screen_width = screen_width
@@ -17,6 +21,8 @@ class Environment(object):
 
     self.history = np.zeros(
         [history_length, self.screen_height, self.screen_width], dtype=np.uint8)
+
+    logger.info("Using %d actions : %s" % (self.action_size, ", ".join(self.env.get_action_meanings())))
 
   def new_game(self, from_random_game=False):
     self.history *= 0
@@ -28,18 +34,22 @@ class Environment(object):
       self.add_history(screen)
       self.lives = self.env.lives()
 
-    return self.history, reward, terminal
+    # history, reward, terminal
+    return self.history, 0, False
 
   def new_random_game(self):
     screen, reward, terminal = self.new_game(True)
 
-    for _ in xrange(random.randrange(self.self.max_random_start)):
+    for idx in xrange(random.randrange(self.self.max_random_start)):
       screen, reward, terminal, _ = self.env.step(0)
+
+      if terminal: logger.warning("WARNING: Terminal signal received after %d 0-steps", idx)
 
     self.add_history(screen)
     self.lives = self.env.lives()
 
-    return self.history, reward, terminal 
+    # history, reward, terminal
+    return self.history, 0, False
 
   def step(self, action, is_training):
     cumulated_reward = 0
