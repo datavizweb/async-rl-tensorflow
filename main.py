@@ -45,12 +45,6 @@ def main(_):
     else:
       data_format = 'NCHW'
 
-    env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
-        config.history_length, config.screen_height, config.screen_width)
-
-    dqn = NatureDQN(data_format, config.history_length,
-        config.screen_height, config.screen_width, env.action_size, name='nature')
-
     agent = Agent(config, env, sess)
 
     if config.is_train:

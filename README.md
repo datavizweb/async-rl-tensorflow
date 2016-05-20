@@ -26,7 +26,6 @@ To train a model for Breakout:
 ## References
 
 - [async_rl](https://github.com/muupan/async-rl)
-- [Code for Human-level control through deep reinforcement learning](https://sites.google.com/a/deepmind.com/dqn/)
 
 
 ## License
