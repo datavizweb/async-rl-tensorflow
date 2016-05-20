@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from .ops import conv2d, linear
+from .ops import conv2d, linear, batch_sample
 
 class NatureDQN(object):
   def __init__(self, data_format, history_length,
@@ -30,7 +30,14 @@ class NatureDQN(object):
       self.l4, self.w['l4_w'], self.w['l4_b'] = linear(self.l3, 512, activation_fn=activation_fn, name='l4')
       self.q, self.w['q_w'], self.w['q_b'] = linear(self.l4, action_size, name='q')
 
-      self.action = tf.argmax(self.q, dimension=1)
+      self.probs = tf.nn.softmax(self.q)
+      self.log_probs = tf.nn.log_softmax(self.q)
+      self.action = tf.argmax(self.probs, dimension=1)
+
+      self.sampled_actions = batch_sample(self.probs)
+      self.sampled_actions_log_probs = tf.gather(self.log_probs, self.sampled_actions)
+
+      self.entropy = -tf.reduce_sum(self.probs * self.log_probs, 1)
 
   def create_copy_ops(self, target):
     copy_ops = []

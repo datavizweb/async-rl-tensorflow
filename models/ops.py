@@ -48,3 +48,9 @@ def linear(input_, output_size, stddev=0.02, bias_start=0.0, activation_fn=None,
       return activation_fn(out), w, b
     else:
       return out, w, b
+
+def batch_sample(probs, name='batch_sample'):
+  with tf.variable_scope(name):
+    uniform = tf.random_uniform(tf.shape(probs), minval=0, maxval=1)
+    samples = tf.argmax(probs - uniform, dimension=1)
+  return samples
