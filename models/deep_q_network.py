@@ -33,10 +33,10 @@ class AsyncNetwork(object):
 
       # policy
       with tf.variable_scope('policy'):
-        self.logits, self.w['p_w'], self.w['p_b'] = linear(self.l4, action_size, name='policy_linear')
+        self.logits, self.w['p_w'], self.w['p_b'] = linear(self.l4, action_size, name='logits')
 
-        self.policy = tf.nn.softmax(self.logits, name='policy')
-        self.action = tf.argmax(self.policy, dimension=1)
+        self.policy = tf.nn.softmax(self.logits, name='pi')
+        self.pred_action = tf.argmax(self.policy, dimension=1)
 
         self.log_policy = tf.nn.log_softmax(self.logits)
 
@@ -47,10 +47,22 @@ class AsyncNetwork(object):
 
       # value function
       with tf.variable_scope('value'):
-        self.value, self.w['q_w'], self.w['q_b'] = linear(self.l4, 1, name='value')
+        self.value, self.w['q_w'], self.w['q_b'] = linear(self.l4, 1, name='V')
 
+      # optimzer
       with tf.variable_scope('optim'):
-        self.target_reward = tf.placeholder([None], name='target_reward')
+        self.R = tf.placeholder('tf.float32', [None], name='target_reward')
+
+        with tf.variable_scope('policy'):
+          self.action = tf.placeholder('int64', [None], name='action')
+
+          action_one_hot = tf.one_hot(self.action, self.env.action_size, 1.0, 0.0, name='action_one_hot')
+          self.policy_loss = tf.reduce_sum(tf.log_policy * self.action, 1) * (self.R - self.value + self.beta * self.entropy)
+
+        with tf.variable_scope('value'):
+          self.value_loss = tf.pow(self.R - self.value, 2)
+
+        self.total_loss = self.policy_loss + self.value_loss
 
   def create_copy_ops(self, target):
     copy_ops = []
