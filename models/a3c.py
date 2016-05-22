@@ -22,9 +22,20 @@ class A3C(object):
     if self.min_reward:
       reward = max(self.min_reward, reward)
 
-    self.past_rewards[self.step - 1] = reward
+    self.prev_rewards[self.step - 1] = reward
 
     if terminal:
       R = 0
     else:
-      _, vout = self.
+      Q = self.sess.run([self.model.value], {self.model.s_t: state})
+
+    policy_loss = 0
+    value_loss = 0
+
+    for t in xrange(self.t_start, self.t, -1):
+      R = self.prev_r[t] + self.gamma * R
+      Q = self.prev_Q[t]
+
+      self.log_policy[t] * (
+
+      diff = R - Q

@@ -3,7 +3,7 @@ import logging
 import tensorflow as tf
 
 from models.environment import Environment
-from models.deep_q_network import NatureDQN
+from models.deep_q_network import AsyncNetwork
 
 flags = tf.app.flags
 
