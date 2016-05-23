@@ -26,6 +26,10 @@ class Agent(object):
           config.screen_height, config.screen_width, env.action_size, name='nature')
 
   def train(self):
+    train_threads = []
+    for i in range(self.parallel_size):
+      train_threads.append(threading.Thread(target=train_function, args=(i,)))
+      
     while:
       with counter.get_lock():
         counter.value += 1
@@ -34,10 +38,7 @@ class Agent(object):
       if global_t > step:
         break
 
-      agent.optim.lr = (max_step - global_t - 1) / max_step * args.lr
-
       action = agent.act(env.
-
 
   def evaluation(self, func, n_runs):
     rewards = []

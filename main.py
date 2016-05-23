@@ -23,9 +23,11 @@ flags.DEFINE_integer('min_reward', -1, 'The minimum value of clipped reward')
 # Training
 flags.DEFINE_boolean('is_train', True, 'Whether to do training or testing')
 flags.DEFINE_float('learning_rate', 7e-4, 'The learning rate of training')
-flags.DEFINE_float('decay', 0.99, 'decay of RMSProp optimizer')
-flags.DEFINE_float('epsilon', 0.1, 'epsilon of RMSProp optimizer')
-flags.DEFINE_float('momentum', 0.0, 'momentum of RMSProp optimizer')
+flags.DEFINE_float('decay', 0.99, 'Decay of RMSProp optimizer')
+flags.DEFINE_float('epsilon', 0.1, 'Epsilon of RMSProp optimizer')
+flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
+flags.DEFINE_float('gamma', 0.0, 'Discount factor of return')
+flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 
 # Debug
 flags.DEFINE_boolean('display', False, 'Whether to do display the game screen or not')
