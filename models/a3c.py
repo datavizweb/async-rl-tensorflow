@@ -4,7 +4,7 @@ def update_target_q_network(from_, to):
   for name in w.keys():
     t_w_assign_op[name].eval({t_w_input[name]: w[name].eval()})
 
-class A3C_worker(object):
+class A3C_FF(object):
   def __init__(self):
     self.global_model = model(config)
     self.model = model(config)

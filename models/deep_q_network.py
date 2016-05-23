@@ -61,11 +61,6 @@ class AsyncNetwork(object):
 
       self.total_loss = self.policy_loss + self.value_loss
 
-      self.policy_optim = tf.train.RMSPropOptimizer(
-          self.learning_rate, self.decay, self.momentum, self.epsilon, name='policy_RMSProp')
-      self.value_optim = tf.train.RMSPropOptimizer(
-          self.learning_rate, self.decay, self.momentum, self.epsilon, name='value_RMSProp')
-
   def calc_policy_value(self, s_t):
     return self.sess.run([self.policy, self.value], {self.s_t: s_t})
 

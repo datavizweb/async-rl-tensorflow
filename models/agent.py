@@ -4,7 +4,11 @@ import multiprocessing as mp
 class Agent(object):
   def __init__(self):
     t = mp.Value('t', 0)
-    pass
+
+    self.policy_optim = tf.train.RMSPropOptimizer(
+        self.learning_rate, self.decay, self.momentum, self.epsilon, name='policy_RMSProp')
+    self.value_optim = tf.train.RMSPropOptimizer(
+        self.learning_rate, self.decay, self.momentum, self.epsilon, name='value_RMSProp')
 
   def make_env(self):
     return Environment(config.env_name, config.n_action_repeat, config.max_random_start,
