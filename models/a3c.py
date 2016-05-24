@@ -47,6 +47,8 @@ class A3C_FF(object):
         # Share parameters between networks
         tf.get_variable_scope().reuse_variables()
 
+        summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
+
         policy_grad = self.policy_optim.compute_gradients(self.policy_loss)
         value_grad = self.value_optim.compute_gradients(self.value_loss)
 
@@ -56,6 +58,34 @@ class A3C_FF(object):
     # Accumulate gradients for n-steps
     accumulated_policy_grads = accumulate_gradients(policy_grads)
     accumulated_value_grads = accumulate_gradients(value_grads)
+
+    for grads in [accumulated_policy_grads, accumulated_value_grads]:
+      for grad, var in grads:
+        if grad is not None:
+          summaries.append(
+              tf.histogram_summary('p%d/%s/gradients' % var.op.name, grad))
+
+    self.optim_step = tf.placeholder('int32', None, name='optim_step')
+
+    self.policy_apply_gradeint_op = self.policy_optim.apply_gradients(
+        accumulated_policy_grads, global_step=self.optim_step)
+    self.value_apply_gradient_op = self.value_optim.apply_gradients(
+        accumulated_value_grads, global_step=self.optim_step)
+
+    if self.pid == 0:
+      for var in tf.trainable_variables():
+        summaries.append(tf.histogram_summary('p%d/%d' % (self.pid, var.op.name), var))
+
+      # Track the moving averages of all trainable variables.
+      variable_averages = tf.train.ExponentialMovingAverage(
+          cifar10.MOVING_AVERAGE_DECAY, global_step)
+      variables_averages_op = variable_averages.apply(tf.trainable_variables())
+
+      self.train_op = tf.group(
+          self.policy_apply_gradeint_op, self.value_apply_gradient_op, variables_averages_op)
+
+      # Create a saver.
+      saver = tf.train.Saver(tf.all_variables())
 
   def act(self, s_t, reward, terminal):
     self.learning_rate = (max_step - global_t - 1) / max_step * args.learning_rate
