@@ -2,13 +2,12 @@ import random
 import logging
 import tensorflow as tf
 
-from models.environment import Environment
 from models.a3c import A3C_FF
 
 flags = tf.app.flags
 
-# Hardware
-flags.DEFINE_boolean('cpu', False, 'Whether to use cpu for convolution')
+# Deep Q Network
+flags.DEFINE_string('data_format', 'NCHW', 'The format of convolutional filter')
 
 # Environment
 flags.DEFINE_string('env_name', 'SpaceInvaders-v0', 'The name of gym environment to use')
@@ -48,12 +47,7 @@ random.seed(config.random_seed)
 
 def main(_):
   with tf.Session() as sess:
-    if config.cpu:
-      data_format = 'NHWC'
-    else:
-      data_format = 'NCHW'
-
-    global_model = AsyncNetwork()
+    global_model = A3C_FF(config)
     global_optim = tf.train.RMSPropOptimzer()
 
     agent = A3C_FF(config, global_model, global_optim, sess)
@@ -81,7 +75,7 @@ def main(_):
                       learning_rate_input,
                       grad_applier, MAX_TIME_STEP,
                       device = device)
-      threads.append(training_thread)
+      threads.append(model)
 
     for idx in range(self.n_process):
       threads.append(threading.Thread(target=train_function, args=(idx,)))

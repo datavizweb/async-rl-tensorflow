@@ -1,33 +1,26 @@
 import tensorflow as tf
 
-from .deep_q_network import AsyncNetwork
-
-def update_target_q_network(from_, to):
-  for name in w.keys():
-    t_w_assign_op[name].eval({t_w_input[name]: w[name].eval()})
-
-def accumulate_gradients(tower_grads):
-  accumulate_grads = []
-  for grad_and_vars in zip(*tower_grads):
-    grads = []
-    for g, _ in grad_and_vars:
-      expanded_g = tf.expand_dims(g, 0)
-      grads.append(expanded_g)
-
-    grad = tf.concat(0, grads)
-    grad = tf.reduce_sum(grad, 0)
-
-    v = grad_and_vars[0][1]
-    grad_and_var = (grad, v)
-    accumulate_grads.append(grad_and_var)
-  return accumulate_grads
+from .deep_q_network import DeepQNetwork
+from models.environment import Environment
+from .utils import copy_deep_q_network, accumulate_gradients
 
 class A3C_FF(object):
-  def __init__(self, config, global_model, global_optim, optim):
+  def __init__(self, config, global_model=None, global_optim=None):
     self.global_model = global_model
-    self.optim = optim
+    self.global_optim = global_optim
 
-    self.model = AsyncNetwork(config)
+    self.env = Environment(config.env_name,
+                           config.n_action_repeat,
+                           config.max_random_start,
+                           config.history_length,
+                           config.screen_height,
+                           config.screen_width)
+
+    self.model = DeepQNetwork(config.data_format,
+                              config.history_length,
+                              config.screen_height,
+                              config.screen_width,
+                              self.env.action_size)
 
     self.t = 0
     self.t_start = 0
@@ -38,14 +31,15 @@ class A3C_FF(object):
     self.rewards = np.empty(self.memory_size, dtype = np.integer)
     self.values = np.empty(self.memory_size, dtype = np.integer)
 
-    copy_weights(self.global_model, self.model)
+    if self.global_model:
+      copy_deep_q_network(self.global_model, self.model)
 
   def build_model(self):
     self.networks, grads = [], []
 
     for step in xrange(self.max_step):
       with tf.name_scpe('A3C_%d' % step) as scope:
-        network = AsyncNetwork()
+        network = DeepQNetwork()
         self.networks.append(network)
 
         # Share parameters between networks
@@ -83,24 +77,6 @@ class A3C_FF(object):
 
       # Create a saver.
       saver = tf.train.Saver(tf.all_variables())
-
-
-  def run_async(n_process, run_func):
-      processes = []
-
-      def set_seed_and_run(process_idx, run_func):
-          random_seed.set_random_seed(np.random.randint(0, 2 ** 32))
-          run_func(process_idx)
-
-      for process_idx in range(n_process):
-          processes.append(mp.Process(target=set_seed_and_run, args=(
-              process_idx, run_func)))
-
-      for p in processes:
-          p.start()
-
-      for p in processes:
-          p.join()
 
   def act(self, s_t, reward, terminal):
     self.learning_rate = (max_step - global_t - 1) / max_step * args.learning_rate

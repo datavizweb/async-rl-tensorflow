@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from .ops import conv2d, linear, batch_sample
 
-class AsyncNetwork(object):
+class DeepQNetwork(object):
   def __init__(self, data_format, history_length,
                screen_height, screen_width,
                action_size, activation_fn=tf.nn.relu,
@@ -48,13 +48,13 @@ class AsyncNetwork(object):
       self.value, self.w['q_w'], self.w['q_b'] = linear(self.l4, 1, name='V')
 
     with tf.variable_scope('optim'):
-      self.R = tf.placeholder('tf.float32', [None], name='target_reward')
+      self.R = tf.placeholder('float32', [None], name='target_reward')
 
       with tf.variable_scope('policy'):
         self.action = tf.placeholder('int64', [None], name='action')
 
-        action_one_hot = tf.one_hot(self.action, self.env.action_size, 1.0, 0.0, name='action_one_hot')
-        self.policy_loss = tf.reduce_sum(tf.log_policy * self.action, 1) * (self.R - self.value + self.beta * self.entropy)
+        action_one_hot = tf.one_hot(self.action, action_size, 1.0, 0.0, name='action_one_hot')
+        self.policy_loss = tf.reduce_sum(self.log_policy * self.action, 1) * (self.R - self.value + self.beta * self.entropy)
 
       with tf.variable_scope('value'):
         self.value_loss = tf.pow(self.R - self.value, 2)
