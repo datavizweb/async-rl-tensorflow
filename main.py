@@ -28,6 +28,7 @@ flags.DEFINE_float('epsilon', 0.1, 'Epsilon of RMSProp optimizer')
 flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.0, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
+flags.DEFINE_integer('n_process', 16, 'The number of processes to run asynchronously')
 
 # Debug
 flags.DEFINE_boolean('display', False, 'Whether to do display the game screen or not')
@@ -52,12 +53,38 @@ def main(_):
     else:
       data_format = 'NCHW'
 
-    agent = A3C_FF(config, env, sess)
+    global_model = AsyncNetwork()
+    global_optim = tf.train.RMSPropOptimzer()
 
-    if config.is_train:
-      agent.train()
-    else:
-      agent.play()
+    agent = A3C_FF(config, global_model, global_optim, sess)
+
+    threads = []
+    global_t = 0
+
+    def train_function(idx):
+      global global_t
+      
+      thread = threads[idx]
+
+      while True:
+        if thread_stop:
+          break
+        if global_t > config.global_t_max:
+          break
+
+        diff_global_t = thread.process(sess, global_t, summary_writer, summary_op, score_input)
+        global_t += diff_global_t
+
+    threads = []
+    for idx in range(self.n_process):
+      thread = A3C_FF(idx, global_network, initial_learning_rate,
+                      learning_rate_input,
+                      grad_applier, MAX_TIME_STEP,
+                      device = device)
+      threads.append(training_thread)
+
+    for idx in range(self.n_process):
+      threads.append(threading.Thread(target=train_function, args=(idx,)))
 
 if __name__ == '__main__':
   tf.app.run()

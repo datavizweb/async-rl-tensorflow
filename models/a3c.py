@@ -23,11 +23,11 @@ def accumulate_gradients(tower_grads):
   return accumulate_grads
 
 class A3C_FF(object):
-  def __init__(self, global_model, optim):
+  def __init__(self, config, global_model, global_optim, optim):
     self.global_model = global_model
     self.optim = optim
 
-    self.model = model(config)
+    self.model = AsyncNetwork(config)
 
     self.t = 0
     self.t_start = 0
@@ -84,6 +84,24 @@ class A3C_FF(object):
       # Create a saver.
       saver = tf.train.Saver(tf.all_variables())
 
+
+  def run_async(n_process, run_func):
+      processes = []
+
+      def set_seed_and_run(process_idx, run_func):
+          random_seed.set_random_seed(np.random.randint(0, 2 ** 32))
+          run_func(process_idx)
+
+      for process_idx in range(n_process):
+          processes.append(mp.Process(target=set_seed_and_run, args=(
+              process_idx, run_func)))
+
+      for p in processes:
+          p.start()
+
+      for p in processes:
+          p.join()
+
   def act(self, s_t, reward, terminal):
     self.learning_rate = (max_step - global_t - 1) / max_step * args.learning_rate
 
@@ -105,10 +123,11 @@ class A3C_FF(object):
       for t in xrange(self.t_start, self.t, -1):
         r[t] = self.prev_r[t] + self.gamma * r[t]
 
-      data1 = {network.s_t: self.prev_s[t] for network in self.networks}
-      data2 = {network.R: r[t] for network in self.networks}
+      data = {}
+      data.update({network.s_t: self.prev_s[t] for network in self.networks})
+      data.update({network.R: r[t] for network in self.networks})
 
-      self.sess.run(self.self.train_op, feed_dict = {**data1, **data2})
+      self.sess.run(self.self.train_op, feed_dict=data)
     else:
       Q = self.sess.run([self.model.value], {self.model.s_t: s_t})
 

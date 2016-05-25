@@ -28,6 +28,7 @@ To train a model for SpaceInvaders:
 ## References
 
 - [async_rl](https://github.com/muupan/async-rl)
+- [async_deep_reinforce](https://github.com/miyosuda/async_deep_reinforce)
 - [asynchronous computation in TensorFlow](http://stackoverflow.com/questions/34419645/asynchronous-computation-in-tensorflow)
 
 
