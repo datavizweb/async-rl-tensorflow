@@ -23,8 +23,10 @@ def accumulate_gradients(tower_grads):
   return accumulate_grads
 
 class A3C_FF(object):
-  def __init__(self):
-    self.global_model = model(config)
+  def __init__(self, global_model, optim):
+    self.global_model = global_model
+    self.optim = optim
+
     self.model = model(config)
 
     self.t = 0
@@ -39,38 +41,33 @@ class A3C_FF(object):
     copy_weights(self.global_model, self.model)
 
   def build_model(self):
-    self.networks, policy_grads, value_grads = [], [], []
+    self.networks, grads = [], []
+
     for step in xrange(self.max_step):
       with tf.name_scpe('A3C_%d' % step) as scope:
-        self.networks = AsyncNetwork()
+        network = AsyncNetwork()
+        self.networks.append(network)
 
         # Share parameters between networks
         tf.get_variable_scope().reuse_variables()
 
         summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
 
-        policy_grad = self.policy_optim.compute_gradients(self.policy_loss)
-        value_grad = self.value_optim.compute_gradients(self.value_loss)
-
-        policy_grads.append(policy_grad)
-        value_grads.append(value_grad)
+        grad = self.optim.compute_gradients(network.total_loss)
+        grads.append(grad)
 
     # Accumulate gradients for n-steps
-    accumulated_policy_grads = accumulate_gradients(policy_grads)
-    accumulated_value_grads = accumulate_gradients(value_grads)
+    accumulated_grads = accumulate_gradients(grads)
 
-    for grads in [accumulated_policy_grads, accumulated_value_grads]:
-      for grad, var in grads:
-        if grad is not None:
-          summaries.append(
-              tf.histogram_summary('p%d/%s/gradients' % var.op.name, grad))
+    for grad, var in accumulated_grads:
+      if grad is not None:
+        summaries.append(
+            tf.histogram_summary('p%d/%s/gradients' % var.op.name, grad))
 
     self.optim_step = tf.placeholder('int32', None, name='optim_step')
 
-    self.policy_apply_gradeint_op = self.policy_optim.apply_gradients(
-        accumulated_policy_grads, global_step=self.optim_step)
-    self.value_apply_gradient_op = self.value_optim.apply_gradients(
-        accumulated_value_grads, global_step=self.optim_step)
+    self.apply_gradeint_op = self.optim.apply_gradients(
+        self.shared_model.variables, accumulated_grads, global_step=self.optim_step)
 
     if self.pid == 0:
       for var in tf.trainable_variables():
@@ -98,20 +95,28 @@ class A3C_FF(object):
 
     self.prev_rewards[self.step - 1] = reward
 
-    if terminal:
-      R = 0
-
-      policy_loss = 0
-      value_loss = 0
+    if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
+      r, a, s = {}, {}, {t: s_t}
+      if terminal:
+        r[t] = 0
+      else:
+        _, r[t] = self.model.calc_policy_value(s_t)
 
       for t in xrange(self.t_start, self.t, -1):
-        R = self.prev_r[t] + self.gamma * R
-        Q = self.prev_Q[t]
+        r[t] = self.prev_r[t] + self.gamma * r[t]
 
-        diff = R - Q
+      data1 = {network.s_t: self.prev_s[t] for network in self.networks}
+      data2 = {network.R: r[t] for network in self.networks}
+
+      self.sess.run(self.self.train_op, feed_dict = {**data1, **data2})
     else:
       Q = self.sess.run([self.model.value], {self.model.s_t: s_t})
 
-    if terminal:
-      self.model.reset_state()
-      action = None
+    if not terminal:
+      self.prev_s[self.t] = s_t
+      self.prev_r[self.t] = reward
+      self.prev_t[self.t] = terminal
+      self.t += 1
+    else:
+      print "Should implement"
+      pass

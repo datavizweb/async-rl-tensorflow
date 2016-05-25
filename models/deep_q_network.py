@@ -78,3 +78,7 @@ class AsyncNetwork(object):
         copy_ops.append(target.w[name].assign(self.w[name]))
 
     return copy_ops
+
+  @property
+  def variables(self):
+    return self.w.items()

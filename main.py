@@ -3,7 +3,7 @@ import logging
 import tensorflow as tf
 
 from models.environment import Environment
-from models.deep_q_network import AsyncNetwork
+from models.a3c import A3C_FF
 
 flags = tf.app.flags
 
@@ -52,7 +52,7 @@ def main(_):
     else:
       data_format = 'NCHW'
 
-    agent = Agent(config, env, sess)
+    agent = A3C_FF(config, env, sess)
 
     if config.is_train:
       agent.train()
