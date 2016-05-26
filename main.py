@@ -1,8 +1,11 @@
+import gym
 import random
 import logging
+import threading
 import tensorflow as tf
 
 from models.a3c import A3C_FF
+from models.deep_q_network import DeepQNetwork
 
 flags = tf.app.flags
 
@@ -27,7 +30,9 @@ flags.DEFINE_float('epsilon', 0.1, 'Epsilon of RMSProp optimizer')
 flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.0, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
-flags.DEFINE_integer('n_process', 16, 'The number of processes to run asynchronously')
+flags.DEFINE_integer('t_max', 100000, 'The maximum number of t while training')
+flags.DEFINE_integer('n_step', 10, 'The maximum number of n')
+flags.DEFINE_integer('n_thread', 16, 'The number of threads to run asynchronously')
 
 # Debug
 flags.DEFINE_boolean('display', False, 'Whether to do display the game screen or not')
@@ -47,14 +52,14 @@ random.seed(config.random_seed)
 
 def main(_):
   with tf.Session() as sess:
-    global_model = A3C_FF(config)
-    global_optim = tf.train.RMSPropOptimzer()
+    global_network = DeepQNetwork(config.data_format,
+                                  config.history_length,
+                                  config.screen_height,
+                                  config.screen_width,
+                                  gym.make(config.env_name).action_space.n)
+    global_optim = tf.train.RMSPropOptimizer(config.learning_rate, config.decay, config.momentum, config.epsilon)
 
-    agent = A3C_FF(config, global_model, global_optim, sess)
-
-    threads = []
     global_t = 0
-
     def train_function(idx):
       global global_t
       
@@ -69,15 +74,13 @@ def main(_):
         diff_global_t = thread.process(sess, global_t, summary_writer, summary_op, score_input)
         global_t += diff_global_t
 
-    threads = []
-    for idx in range(self.n_process):
-      thread = A3C_FF(idx, global_network, initial_learning_rate,
-                      learning_rate_input,
-                      grad_applier, MAX_TIME_STEP,
-                      device = device)
-      threads.append(model)
+    models = []
+    for thread_id in range(config.n_thread):
+      model = A3C_FF(thread_id, config, sess, global_network, global_optim)
+      models.append(model)
 
-    for idx in range(self.n_process):
+    threads = []
+    for idx in range(config.n_thread):
       threads.append(threading.Thread(target=train_function, args=(idx,)))
 
 if __name__ == '__main__':

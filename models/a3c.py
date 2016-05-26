@@ -1,11 +1,14 @@
+import numpy as np
 import tensorflow as tf
 
 from .deep_q_network import DeepQNetwork
 from models.environment import Environment
-from .utils import copy_deep_q_network, accumulate_gradients
+from .utils import accumulate_gradients
 
 class A3C_FF(object):
-  def __init__(self, config, global_model=None, global_optim=None):
+  def __init__(self, thread_id, config, sess, global_model, global_optim):
+    self.sess = sess
+    self.thread_id = thread_id
     self.global_model = global_model
     self.global_optim = global_optim
 
@@ -16,34 +19,31 @@ class A3C_FF(object):
                            config.screen_height,
                            config.screen_width)
 
-    self.model = DeepQNetwork(config.data_format,
-                              config.history_length,
-                              config.screen_height,
-                              config.screen_width,
-                              self.env.action_size)
-
     self.t = 0
     self.t_start = 0
-    self.t_max = t_max
-    self.learning_rate = learning_rate
+    self.t_max = config.t_max
+    self.n_step = config.n_step
+    self.learning_rate = config.learning_rate
 
-    self.s_ts = np.empty((self.memory_size, config.screen_height, config.screen_width), dtype = np.float16)
-    self.rewards = np.empty(self.memory_size, dtype = np.integer)
-    self.values = np.empty(self.memory_size, dtype = np.integer)
-
-    if self.global_model:
-      copy_deep_q_network(self.global_model, self.model)
+    self.s_ts = np.empty((self.n_step, config.screen_height, config.screen_width), dtype = np.float16)
+    self.rewards = np.empty(self.n_step, dtype = np.integer)
+    self.values = np.empty(self.n_step, dtype = np.integer)
 
   def build_model(self):
     self.networks, grads = [], []
 
+    if self.global_model:
+      tf.get_variable_scope().reuse_variables()
+
     for step in xrange(self.max_step):
       with tf.name_scpe('A3C_%d' % step) as scope:
-        network = DeepQNetwork()
+        network = DeepQNetwork(config.data_format,
+                               config.history_length,
+                               config.screen_height,
+                               config.screen_width,
+                               self.env.action_size)
+        network.copy_w_from(self.global_model)
         self.networks.append(network)
-
-        # Share parameters between networks
-        tf.get_variable_scope().reuse_variables()
 
         summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
 
@@ -79,7 +79,7 @@ class A3C_FF(object):
       saver = tf.train.Saver(tf.all_variables())
 
   def act(self, s_t, reward, terminal):
-    self.learning_rate = (max_step - global_t - 1) / max_step * args.learning_rate
+    learning_rate = (max_step - global_t - 1) / max_step * self.learning_rate
 
     # clip reward
     if self.max_reward:
