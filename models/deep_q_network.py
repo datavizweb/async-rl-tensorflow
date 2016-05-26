@@ -42,7 +42,7 @@ class DeepQNetwork(object):
       self.logits, self.w['p_w'], self.w['p_b'] = linear(self.l4, action_size, name='logits')
 
       self.policy = tf.nn.softmax(self.logits, name='pi')
-      self.log_policy = tf.nn.log_softmax(self.logits)
+      self.log_policy = tf.log(tf.nn.softmax(self.logits))
       self.entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
 
       self.pred_action = tf.argmax(self.policy, dimension=1)

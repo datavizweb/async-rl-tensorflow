@@ -31,7 +31,7 @@ flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.0, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 100000, 'The maximum number of t while training')
-flags.DEFINE_integer('n_step', 10, 'The maximum number of n')
+flags.DEFINE_integer('n_step', 5, 'The maximum number of n')
 flags.DEFINE_integer('n_thread', 2, 'The number of threads to run asynchronously')
 
 # Debug
@@ -62,24 +62,23 @@ def main(_):
     global_t = 0
     thread_stop = False
     def train_function(idx):
-      global global_t
-      
       model = models[idx]
       state, reward, terminal = model.env.new_random_game()
 
       while True:
-        if thread_stop:
-          break
-        if global_t > config.global_t_max:
-          break
-
-        diff_global_t = models.act(state, reward, terminal)
+        diff_global_t = model.act(state, reward, terminal)
         global_t += diff_global_t
 
     models = []
     for thread_id in range(config.n_thread):
       model = A3C_FF(thread_id, config, sess, global_network, global_optim)
       models.append(model)
+
+    tf.initialize_all_variables().run()
+    saver = tf.train.Saver(global_network.w.values(), max_to_keep=30)
+
+    for model in models:
+      model.copy_from_global()
 
     threads = []
     for idx in range(config.n_thread):

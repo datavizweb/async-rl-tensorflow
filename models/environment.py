@@ -1,8 +1,14 @@
-import cv2
 import gym
 import random
 import logging
 import numpy as np
+
+try:
+  import cv2
+  resize = cv2.resize
+except:
+  import scipy.misc
+  resize = scipy.misc.imresize
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +80,7 @@ class Environment(object):
   def _add_history(self, raw_screen):
     y = 0.2126 * raw_screen[:, :, 0] + 0.7152 * raw_screen[:, :, 1] + 0.0722 * raw_screen[:, :, 2]
     y = y.astype(np.uint8)
-    y_screen = cv2.resize(y, (self.screen_height, self.screen_width))
+    y_screen = resize(y, (self.screen_height, self.screen_width))
 
     self.history[:-1] = self.history[1:]
     self.history[-1] = y_screen
