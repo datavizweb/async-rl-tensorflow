@@ -1,9 +1,12 @@
+import logging
 import numpy as np
 import tensorflow as tf
 
 from .deep_q_network import DeepQNetwork
 from models.environment import Environment
 from .utils import accumulate_gradients
+
+logger = logging.getLogger(__name__)
 
 class A3C_FF(object):
   def __init__(self, thread_id, config, sess, global_model, global_optim):
@@ -79,6 +82,7 @@ class A3C_FF(object):
       saver = tf.train.Saver(tf.all_variables())
 
   def act(self, s_t, reward, terminal):
+    logger.info(" [%d] ACT : %s, %s" % (self.thread_id, reward, terminal))
     learning_rate = (max_step - global_t - 1) / max_step * self.learning_rate
 
     # clip reward

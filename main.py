@@ -1,8 +1,8 @@
 import gym
 import random
 import logging
-import threading
 import tensorflow as tf
+from threading import Thread
 
 from models.a3c import A3C_FF
 from models.deep_q_network import DeepQNetwork
@@ -32,7 +32,7 @@ flags.DEFINE_float('gamma', 0.0, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 100000, 'The maximum number of t while training')
 flags.DEFINE_integer('n_step', 10, 'The maximum number of n')
-flags.DEFINE_integer('n_thread', 16, 'The number of threads to run asynchronously')
+flags.DEFINE_integer('n_thread', 2, 'The number of threads to run asynchronously')
 
 # Debug
 flags.DEFINE_boolean('display', False, 'Whether to do display the game screen or not')
@@ -60,10 +60,12 @@ def main(_):
     global_optim = tf.train.RMSPropOptimizer(config.learning_rate, config.decay, config.momentum, config.epsilon)
 
     global_t = 0
+    thread_stop = False
     def train_function(idx):
       global global_t
       
-      thread = threads[idx]
+      model = models[idx]
+      state, reward, terminal = model.env.new_random_game()
 
       while True:
         if thread_stop:
@@ -71,7 +73,7 @@ def main(_):
         if global_t > config.global_t_max:
           break
 
-        diff_global_t = thread.process(sess, global_t, summary_writer, summary_op, score_input)
+        diff_global_t = models.act(state, reward, terminal)
         global_t += diff_global_t
 
     models = []
@@ -81,7 +83,13 @@ def main(_):
 
     threads = []
     for idx in range(config.n_thread):
-      threads.append(threading.Thread(target=train_function, args=(idx,)))
+      threads.append(Thread(target=train_function, args=(idx,)))
+
+    for thread in threads:
+      thread.start()
+
+    for thread in threads:
+      thread.join()
 
 if __name__ == '__main__':
   tf.app.run()

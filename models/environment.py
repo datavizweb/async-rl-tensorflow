@@ -1,5 +1,6 @@
 import cv2
 import gym
+import random
 import logging
 import numpy as np
 
@@ -31,8 +32,8 @@ class Environment(object):
     screen, reward, terminal, _ = self.env.step(0)
 
     if from_random_game == False:
-      self.add_history(screen)
-      self.lives = self.env.lives()
+      self._add_history(screen)
+      self.lives = self.env.ale.lives()
 
     # history, reward, terminal
     return self.history, 0, False
@@ -40,13 +41,13 @@ class Environment(object):
   def new_random_game(self):
     screen, reward, terminal = self.new_game(True)
 
-    for idx in xrange(random.randrange(self.self.max_random_start)):
+    for idx in xrange(random.randrange(self.max_random_start)):
       screen, reward, terminal, _ = self.env.step(0)
 
       if terminal: logger.warning("WARNING: Terminal signal received after %d 0-steps", idx)
 
-    self.add_history(screen)
-    self.lives = self.env.lives()
+    self._add_history(screen)
+    self.lives = self.env.ale.lives()
 
     # history, reward, terminal
     return self.history, 0, False
@@ -65,22 +66,15 @@ class Environment(object):
       if terminal: break
 
     if not terminal:
-      self.add_history(screen)
+      self._add_history(screen)
       self.lives = current_lives
 
     return self.history, reward, terminal
 
-  def _add_history(self):
-    self.history[:-1] = self.history[1:]
-    self.history[-1] = self._screen
-
-  @property
-  def screen(self):
-    # Luminance
-    y = 0.2126 * self._screen[:, :, 0] + 0.7152 * self._screen[:, :, 1] + 0.0722 * self._screen[:, :, 2]
+  def _add_history(self, raw_screen):
+    y = 0.2126 * raw_screen[:, :, 0] + 0.7152 * raw_screen[:, :, 1] + 0.0722 * raw_screen[:, :, 2]
     y = y.astype(np.uint8)
-    return cv2.resize(y, (self.screen_height, self.screen_width))
+    y_screen = cv2.resize(y, (self.screen_height, self.screen_width))
 
-  @property
-  def state(self):
-    return self._screen, self.reward, self.terminal
+    self.history[:-1] = self.history[1:]
+    self.history[-1] = y_screen
