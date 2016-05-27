@@ -43,14 +43,8 @@ class A3C_FF(object):
     self.screen_width = config.screen_width
     self.history_length = config.history_length
 
-    if self.data_format == 'NHWC':
-      self.prev_s = np.empty((self.t_max, config.screen_height, config.screen_width, self.history_length), dtype=np.float16)
-    elif self.data_format == 'NCHW':
-      self.prev_s = np.empty((self.t_max, self.history_length, config.screen_height, config.screen_width), dtype=np.float16)
-    else:
-      raise ValueError("unknown data_format : %s" % self.data_format)
-
     self.prev_p_logits = {} # np.empty([self.t_max, self.action_size], dtype=np.integer)
+    self.prev_s = {} # np.empty([self.t_max, 1], dtype=np.integer)
     self.prev_v = {} # np.empty([self.t_max, 1], dtype=np.integer)
     self.prev_r = {} # np.empty(self.t_max, dtype=np.integer)
     self.prev_a = {} # np.empty(self.t_max, dtype=np.integer)
@@ -100,34 +94,36 @@ class A3C_FF(object):
       p_logits, v, action = self.networks[0].calc_policy_logits_value_action([s_t])
       action = action[0]
 
-    self.prev_s[self.t] = s_t
-    self.prev_a[self.t] = action
     #self.prev_p_logits[self.t] = p_logits[0]
     #self.prev_v[self.t] = v[0]
-
-    self.t += 1
+    self.prev_a[self.t] = action
 
     return action
 
   def observe(self, s_t, r_t, terminal):
-    logger.info(" [%d] ACT : %s, %s" % (self.thread_id, r_t, terminal))
+    logger.info("%2d [%6d] a: %s, t: %s" % (self.thread_id, self.t, r_t, terminal))
 
     r_t = max(self.min_reward, min(self.max_reward, r_t))
-    self.prev_r[self.t - 1] = r_t
+    self.prev_r[self.t] = r_t
+    self.prev_s[self.t] = s_t
 
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
       r = {}
 
       if terminal:
-        r[self.t] = 0
+        r[self.t] = 0.
       else:
-        r[self.t] = self.networks[0].calc_value([s_t])[0]
+        r[self.t] = self.networks[0].calc_value([s_t])[0][0]
+
+      print 1, r
 
       for t in xrange(self.t - 1, self.t_start - 1, -1):
         r[t] = self.prev_r[t] + self.gamma * r[t + 1]
 
+      print 2, r
+
       data = {}
-      data.update({network.R: r[t + self.t_start] for t, network in enumerate(self.networks)})
+      data.update({network.R: [r[t + self.t_start]] for t, network in enumerate(self.networks)})
       data.update({network.s_t: [self.prev_s[t + self.t_start]] for t, network in enumerate(self.networks)})
       data.update({network.true_action : [self.prev_a[t + self.t_start]] for t, network in enumerate(self.networks)})
       #data.update({network.policy_logits: [self.prev_p_logits[t]] for t, network in enumerate(self.networks)})
@@ -137,9 +133,11 @@ class A3C_FF(object):
       self.sess.run(self.apply_gradeint_op, feed_dict=data)
       self.copy_from_global()
 
-      self.prev_a = {} # *= 0
-      self.prev_s = {} # *= 0
+      self.prev_a = {self.t: self.prev_a[self.t]} # *= 0
+      self.prev_s = {self.t: self.prev_s[self.t]} # *= 0
       self.t_start = self.t
+
+    self.t += 1
 
   def copy_from_global(self):
     for network in self.networks:
