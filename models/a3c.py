@@ -19,6 +19,7 @@ class A3C_FF(object):
                            config.n_action_repeat,
                            config.max_random_start,
                            config.history_length,
+                           config.data_format,
                            config.screen_height,
                            config.screen_width)
 
@@ -26,19 +27,28 @@ class A3C_FF(object):
     self.t_start = 0
     self.t_max = config.t_max
 
+    self.gamma = config.gamma
     self.max_reward = config.max_reward
     self.min_reward = config.min_reward
 
+    self.data_format = config.data_format
+    self.action_size = self.env.action_size
     self.screen_height = config.screen_height
     self.screen_width = config.screen_width
-    self.data_format = config.data_format
     self.history_length = config.history_length
 
-    #self.prev_s = np.empty((self.t_max, self.history_length, config.screen_height, config.screen_width), dtype=np.float16)
-    self.prev_p_logits = np.empty(self.t_max, dtype=np.integer)
-    self.prev_r = np.empty(self.t_max, dtype=np.integer)
-    self.prev_v = np.empty(self.t_max, dtype=np.integer)
-    self.prev_t = np.empty(self.t_max, dtype=np.bool)
+    if self.data_format == 'NHWC':
+      self.prev_s = np.empty((self.t_max, config.screen_height, config.screen_width, self.history_length), dtype=np.float16)
+    elif self.data_format == 'NCHW':
+      self.prev_s = np.empty((self.t_max, self.history_length, config.screen_height, config.screen_width), dtype=np.float16)
+    else:
+      raise ValueError("unknown data_format : %s" % self.data_format)
+
+    self.prev_p_logits = {} # np.empty([self.t_max, self.action_size], dtype=np.integer)
+    self.prev_v = {} # np.empty([self.t_max, 1], dtype=np.integer)
+    self.prev_r = {} # np.empty(self.t_max, dtype=np.integer)
+    self.prev_a = {} # np.empty(self.t_max, dtype=np.integer)
+    self.prev_t = {} # np.empty(self.t_max, dtype=np.bool)
 
     self.build_model()
 
@@ -54,7 +64,7 @@ class A3C_FF(object):
                                 self.history_length,
                                 self.screen_height,
                                 self.screen_width,
-                                self.env.action_size)
+                                self.action_size)
           self.networks.append(network)
 
           tf.get_variable_scope().reuse_variables()
@@ -85,37 +95,42 @@ class A3C_FF(object):
     self.prev_r[self.t - 1] = r_t
 
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
-      r, a, s = {}, {}, {self.t: s_t}
+      r = {}
 
       if terminal:
         r[self.t] = 0
       else:
-        r[self.t] = self.networks[0].calc_value([s_t])
+        r[self.t] = self.networks[0].calc_value([s_t])[0]
 
-      for t in xrange(self.t - 1, self.t_start, -1):
-        r[t] = self.prev_r[t + 1] + self.gamma * r[t]
+      for t in xrange(self.t - 1, self.t_start - 1, -1):
+        r[t] = self.prev_r[t] + self.gamma * r[t + 1]
 
       data = {}
-      data.update({network.R: r[t] for t, network in enumerate(self.networks)})
-      data.update({network.policy_logits: self.prev_p_logits[t] for t, network in enumerate(self.networks)})
-      data.update({network.value: self.prev_v[t] for t, network in enumerate(self.networks)})
+      data.update({network.R: r[t + self.t_start] for t, network in enumerate(self.networks)})
+      data.update({network.s_t: [self.prev_s[t + self.t_start]] for t, network in enumerate(self.networks)})
+      data.update({network.true_action : [self.prev_a[t + self.t_start]] for t, network in enumerate(self.networks)})
+      #data.update({network.policy_logits: [self.prev_p_logits[t]] for t, network in enumerate(self.networks)})
+      #data.update({network.value: [self.prev_v[t]] for t, network in enumerate(self.networks)})
+      #data.update({network.value: [self.prev_v[t]] for t, network in enumerate(self.networks)})
 
       self.sess.run(self.apply_gradeint_op, feed_dict=data)
       self.copy_from_global()
 
-      self.prev_r *= 0
-
+      self.prev_a = {} # *= 0
+      self.prev_s = {} # *= 0
       self.t_start = self.t
+
       action = None
     else:
       p_logits, v, action = self.networks[0].calc_policy_logits_value_action([s_t])
       action = action[0]
 
-      self.prev_p_logits[self.t] = p_logits[0][action]
-      self.prev_v[self.t] = v[0][0]
+      self.prev_s[self.t] = s_t
+      self.prev_a[self.t] = action
+      #self.prev_p_logits[self.t] = p_logits[0]
+      #self.prev_v[self.t] = v[0]
 
       self.t += 1
-
     return action
 
   def copy_from_global(self):

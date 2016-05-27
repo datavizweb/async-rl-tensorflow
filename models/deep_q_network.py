@@ -13,9 +13,11 @@ class DeepQNetwork(object):
     if data_format == 'NHWC':
       self.s_t = tf.placeholder('float32',
           [None, screen_width, screen_height, history_length], name='s_t')
-    else:
+    elif data_format == 'NCHW':
       self.s_t = tf.placeholder('float32',
           [None, history_length, screen_width, screen_height], name='s_t')
+    else:
+      raise ValueError("unknown data_format : %s" % data_format)
 
     with tf.variable_scope('Nature_DQN'):
       self.w = {}
@@ -51,7 +53,7 @@ class DeepQNetwork(object):
     with tf.variable_scope('optim'):
       self.R = tf.placeholder('float32', [None], name='target_reward')
 
-      self.true_action = tf.placeholder('int64', [None], name='action')
+      self.true_action = tf.placeholder('int64', [None], name='true_action')
       action_one_hot = tf.one_hot(self.true_action, action_size, 1.0, 0.0, name='action_one_hot')
 
       self.policy_loss = tf.reduce_sum(self.log_policy * action_one_hot, 1) \
@@ -72,14 +74,15 @@ class DeepQNetwork(object):
     return self.sess.run([self.policy_logits, self.value, self.pred_action], {self.s_t: s_t})
 
   def calc_policy(self, s_t):
-    return self.policy.eval({self.s_t: s_t})
+    return self.policy.eval({self.s_t: s_t}, session=self.sess)
 
   def calc_value(self, s_t):
-    return self.value.eval({self.s_t: s_t})
+    return self.value.eval({self.s_t: s_t}, session=self.sess)
 
   def copy_w_from(self, target_model):
-    for name in self.w.keys():
-      self.w_assign_op[name].eval({self.w_input[name]: target_model.w[name].eval()})
+    with self.sess.as_default():
+      for name in self.w.keys():
+        self.sess.run(self.w_assign_op[name], {self.w_input[name]: target_model.w[name].eval()})
 
   @property
   def variables(self):

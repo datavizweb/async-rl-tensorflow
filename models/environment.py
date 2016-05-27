@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class Environment(object):
   def __init__(self, env_name, n_action_repeat, max_random_start,
-               history_length, screen_height=84, screen_width=84):
+               history_length, data_format, screen_height=84, screen_width=84):
     self.env = gym.make(env_name)
 
     self.n_action_repeat = n_action_repeat
@@ -23,11 +23,18 @@ class Environment(object):
     self.history_length = history_length
     self.action_size = self.env.action_space.n
 
+    self.data_format = data_format
     self.screen_width = screen_width
     self.screen_height = screen_height
 
-    self.history = np.zeros(
-        [history_length, self.screen_height, self.screen_width], dtype=np.uint8)
+    if self.data_format == 'NHWC':
+      self.history = np.zeros(
+          [self.screen_height, self.screen_width, history_length], dtype=np.uint8)
+    elif self.data_format == 'NCHW':
+      self.history = np.zeros(
+          [self.history_length, self.screen_height, self.screen_width], dtype=np.uint8)
+    else:
+      raise ValueError("unknown data_format : %s" % self.data_format)
 
     logger.info("Using %d actions : %s" % (self.action_size, ", ".join(self.env.get_action_meanings())))
 
@@ -82,5 +89,11 @@ class Environment(object):
     y = y.astype(np.uint8)
     y_screen = resize(y, (self.screen_height, self.screen_width))
 
-    self.history[:-1] = self.history[1:]
-    self.history[-1] = y_screen
+    if self.data_format == 'NCHW':
+      self.history[:-1] = self.history[1:]
+      self.history[-1] = y_screen
+    elif self.data_format == 'NHWC':
+      self.history[:,:,:-1] = self.history[:,:,1:]
+      self.history[:,:,-1] = y_screen
+    else:
+      raise ValueError("unknown data_format : %s" % self.data_format)
