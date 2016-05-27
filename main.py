@@ -11,6 +11,9 @@ flags = tf.app.flags
 
 # Deep Q Network
 flags.DEFINE_string('data_format', 'NHWC', 'The format of convolutional filter')
+flags.DEFINE_string('ep_start', 1., 'The value of epsilon at start in e-greedy')
+flags.DEFINE_string('ep_end', 0.1, 'The value of epsilnon at the end in e-greedy')
+flags.DEFINE_string('ep_end_t', 1000000, 'The time t when epsilon reach ep_end')
 
 # Environment
 flags.DEFINE_string('env_name', 'Breakout-v0', 'The name of gym environment to use')
@@ -70,7 +73,12 @@ def main(_):
       state, reward, terminal = model.env.new_random_game()
 
       while True:
-        diff_global_t = model.act(state, reward, terminal)
+        # 1. predict
+        action = model.predict(state)
+        # 2. act
+        state, reward, terminal = model.env.step(action, is_training=True)
+        # 3. observe
+        model.observe(state, reward, terminal)
 
     # Define thread-specific models
     models = []

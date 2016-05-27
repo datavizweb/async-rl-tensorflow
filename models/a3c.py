@@ -1,3 +1,4 @@
+import random
 import logging
 import numpy as np
 import tensorflow as tf
@@ -20,12 +21,17 @@ class A3C_FF(object):
                            config.max_random_start,
                            config.history_length,
                            config.data_format,
+                           config.display,
                            config.screen_height,
                            config.screen_width)
 
     self.t = 0
     self.t_start = 0
     self.t_max = config.t_max
+
+    self.ep_start = config.ep_start
+    self.ep_end = config.ep_end
+    self.ep_end_t = config.ep_end_t
 
     self.gamma = config.gamma
     self.max_reward = config.max_reward
@@ -83,15 +89,30 @@ class A3C_FF(object):
 
       self.apply_gradeint_op = self.global_optim.apply_gradients(accumulated_grads, global_step=self.optim_step)
 
-  def act(self, s_t, r_t, terminal):
+  def predict(self, s_t, test_ep=None):
+    ep = test_ep or (self.ep_end +
+        max(0., (self.ep_start - self.ep_end)
+          * (self.ep_end_t - self.t) / self.ep_end_t))
+
+    if random.random() < ep:
+      action = random.randrange(self.env.action_size)
+    else:
+      p_logits, v, action = self.networks[0].calc_policy_logits_value_action([s_t])
+      action = action[0]
+
+    self.prev_s[self.t] = s_t
+    self.prev_a[self.t] = action
+    #self.prev_p_logits[self.t] = p_logits[0]
+    #self.prev_v[self.t] = v[0]
+
+    self.t += 1
+
+    return action
+
+  def observe(self, s_t, r_t, terminal):
     logger.info(" [%d] ACT : %s, %s" % (self.thread_id, r_t, terminal))
 
-    # clip reward
-    if self.max_reward:
-      r_t = min(self.max_reward, r_t)
-    if self.min_reward:
-      r_t = max(self.min_reward, r_t)
-
+    r_t = max(self.min_reward, min(self.max_reward, r_t))
     self.prev_r[self.t - 1] = r_t
 
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
@@ -119,19 +140,6 @@ class A3C_FF(object):
       self.prev_a = {} # *= 0
       self.prev_s = {} # *= 0
       self.t_start = self.t
-
-      action = None
-    else:
-      p_logits, v, action = self.networks[0].calc_policy_logits_value_action([s_t])
-      action = action[0]
-
-      self.prev_s[self.t] = s_t
-      self.prev_a[self.t] = action
-      #self.prev_p_logits[self.t] = p_logits[0]
-      #self.prev_v[self.t] = v[0]
-
-      self.t += 1
-    return action
 
   def copy_from_global(self):
     for network in self.networks:

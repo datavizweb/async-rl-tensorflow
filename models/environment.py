@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class Environment(object):
   def __init__(self, env_name, n_action_repeat, max_random_start,
-               history_length, data_format, screen_height=84, screen_width=84):
+               history_length, data_format, display, screen_height=84, screen_width=84):
     self.env = gym.make(env_name)
 
     self.n_action_repeat = n_action_repeat
@@ -23,6 +23,7 @@ class Environment(object):
     self.history_length = history_length
     self.action_size = self.env.action_space.n
 
+    self.display = display
     self.data_format = data_format
     self.screen_width = screen_width
     self.screen_height = screen_height
@@ -44,6 +45,9 @@ class Environment(object):
     screen = self.env.reset()
     screen, reward, terminal, _ = self.env.step(0)
 
+    if self.display:
+      self.env.render()
+
     if from_random_game == False:
       self._add_history(screen)
       self.lives = self.env.ale.lives()
@@ -59,6 +63,9 @@ class Environment(object):
 
       if terminal: logger.warning("WARNING: Terminal signal received after %d 0-steps", idx)
 
+    if self.display:
+      self.env.render()
+
     self._add_history(screen)
     self.lives = self.env.ale.lives()
 
@@ -71,12 +78,15 @@ class Environment(object):
     for _ in xrange(self.n_action_repeat):
       screen, reward, terminal, _ = self.env.step(action)
       cumulated_reward += reward
-      current_lives = self.env.lives()
+      current_lives = self.env.ale.lives()
 
       if is_training and self.lives > current_lives:
         terminal = True
 
       if terminal: break
+
+    if self.display:
+      self.env.render()
 
     if not terminal:
       self._add_history(screen)
