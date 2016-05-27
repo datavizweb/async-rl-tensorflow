@@ -3,11 +3,13 @@ import tensorflow as tf
 from .ops import conv2d, linear, batch_sample
 
 class DeepQNetwork(object):
-  def __init__(self, data_format, history_length,
+  def __init__(self, sess, data_format, history_length,
                screen_height, screen_width,
                action_size, activation_fn=tf.nn.relu,
                initializer=tf.truncated_normal_initializer(0, 0.02), 
                gamma=0.01, beta=0.0, name=None):
+    self.sess = sess
+
     if data_format == 'NHWC':
       self.s_t = tf.placeholder('float32',
           [None, screen_width, screen_height, history_length], name='s_t')

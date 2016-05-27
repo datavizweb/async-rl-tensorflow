@@ -25,7 +25,6 @@ class A3C_FF(object):
     self.t = 0
     self.t_start = 0
     self.t_max = config.t_max
-    self.n_step = config.n_step
 
     self.max_reward = config.max_reward
     self.min_reward = config.min_reward
@@ -35,10 +34,10 @@ class A3C_FF(object):
     self.data_format = config.data_format
     self.history_length = config.history_length
 
-    self.prev_s = np.empty((self.n_step, self.history_length, config.screen_height, config.screen_width), dtype=np.float16)
-    self.prev_r = np.empty(self.n_step, dtype=np.integer)
-    self.prev_v = np.empty(self.n_step, dtype=np.integer)
-    self.prev_t = np.empty(self.n_step, dtype=np.bool)
+    self.prev_s = np.empty((self.t_max, self.history_length, config.screen_height, config.screen_width), dtype=np.float16)
+    self.prev_r = np.empty(self.t_max, dtype=np.integer)
+    self.prev_v = np.empty(self.t_max, dtype=np.integer)
+    self.prev_t = np.empty(self.t_max, dtype=np.bool)
 
     self.build_model()
 
@@ -48,9 +47,9 @@ class A3C_FF(object):
     with tf.variable_scope('thread%d' % self.thread_id) as scope:
       self.optim_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
 
-      for step in xrange(self.n_step):
+      for step in xrange(self.t_max):
         with tf.name_scope('A3C_%d' % step) as scope:
-          network = DeepQNetwork(self.data_format,
+          network = DeepQNetwork(self.sess, self.data_format,
                                 self.history_length,
                                 self.screen_height,
                                 self.screen_width,
@@ -73,45 +72,45 @@ class A3C_FF(object):
 
       self.apply_gradeint_op = self.global_optim.apply_gradients(accumulated_grads, global_step=self.optim_step)
 
-  def act(self, s_t, reward, terminal):
-    logger.info(" [%d] ACT : %s, %s" % (self.thread_id, reward, terminal))
+  def act(self, s_t, r_t, t_t):
+    logger.info(" [%d] ACT : %s, %s" % (self.thread_id, r_t, t_t))
 
     # clip reward
     if self.max_reward:
-      reward = min(self.max_reward, reward)
+      r_t = min(self.max_reward, r_t)
     if self.min_reward:
-      reward = max(self.min_reward, reward)
+      r_t = max(self.min_reward, r_t)
 
-    self.prev_r[self.t - 1] = reward
+    self.prev_r[self.t - 1] = r_t
 
-    if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
-      r, a, s = {}, {}, {t: s_t}
-      if terminal:
-        r[t] = 0
+    if (t_t and self.t_start < self.t) or self.t - self.t_start == self.t_max:
+      r, a, s = {}, {}, {self.t: s_t}
+      if t_t:
+        r[self.t] = 0
       else:
-        _, r[t] = self.networks[0].calc_policy_value(s_t)
+        _, r[self.t] = self.networks[0].calc_policy_value(s_t)
 
       for t in xrange(self.t_start, self.t, -1):
-        r[t] = self.prev_r[t] + self.gamma * r[t]
+        r[self.t] = self.prev_r[self.t] + self.gamma * r[self.t]
 
       data = {}
-      data.update({network.s_t: self.prev_s[t] for network in self.networks})
-      data.update({network.R: r[t] for network in self.networks})
+      data.update({network.s_t: self.prev_s[self.t] for network in self.networks})
+      data.update({network.R: r[self.t] for network in self.networks})
 
-      self.sess.run(self.self.train_op, feed_dict=data)
+      self.sess.run(self.apply_gradeint_op, feed_dict=data)
+      self.copy_from_global()
+
+      self.prev_s *= 0.
+      self.prev_r *= 0
+      self.prev_v *= 0
+
+      self.t_start = self.t
     else:
-      Q = self.sess.run([self.networks[0].value], {self.networks[0].s_t: [s_t]})
-
-    if not terminal:
-      self.prev_s[self.t] = s_t
-      self.prev_r[self.t] = reward
-      self.prev_t[self.t] = terminal
+      p, v = self.networks[0].calc_policy_value(s_t=[s_t])
+      self.prev_v[self.t] = v
       self.t += 1
-    else:
-      print "Should implement"
-      pass
 
-    return self.start_t - self.t
+    return self.t_start - self.t
 
   def copy_from_global(self):
     for network in self.networks:

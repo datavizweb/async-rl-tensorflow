@@ -30,8 +30,7 @@ flags.DEFINE_float('epsilon', 0.1, 'Epsilon of RMSProp optimizer')
 flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.0, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
-flags.DEFINE_integer('t_max', 100000, 'The maximum number of t while training')
-flags.DEFINE_integer('n_step', 5, 'The maximum number of n')
+flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
 flags.DEFINE_integer('n_thread', 2, 'The number of threads to run asynchronously')
 
 # Debug
@@ -56,7 +55,7 @@ should_stop = False
 def main(_):
   with tf.Session() as sess:
     with tf.variable_scope('master') as scope:
-      global_network = DeepQNetwork(config.data_format,
+      global_network = DeepQNetwork(sess, config.data_format,
                                     config.history_length,
                                     config.screen_height,
                                     config.screen_width,
