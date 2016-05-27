@@ -31,7 +31,7 @@ flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
-flags.DEFINE_integer('n_thread', 12, 'The number of threads to run asynchronously')
+flags.DEFINE_integer('n_thread', 1, 'The number of threads to run asynchronously')
 
 # Debug
 flags.DEFINE_boolean('display', False, 'Whether to do display the game screen or not')
@@ -94,7 +94,7 @@ def main(_):
       threads.append(Thread(target=train_function, args=(idx,)))
 
     # Test for syncrhnous training
-    #train_function(0)
+    train_function(0)
 
     # Execute and wait for the end of the training
     for thread in threads:
