@@ -30,23 +30,26 @@ class A3C_FF(object):
     self.max_reward = config.max_reward
     self.min_reward = config.min_reward
 
-    self.data_format = config.data_format
-    self.history_length = config.history_length
     self.screen_height = config.screen_height
     self.screen_width = config.screen_width
+    self.data_format = config.data_format
+    self.history_length = config.history_length
 
-    self.s_ts = np.empty((self.n_step, config.screen_height, config.screen_width), dtype = np.float16)
-    self.prev_rewards = np.empty(self.n_step, dtype = np.integer)
-    self.prev_values = np.empty(self.n_step, dtype = np.integer)
+    self.prev_s = np.empty((self.n_step, self.history_length, config.screen_height, config.screen_width), dtype=np.float16)
+    self.prev_r = np.empty(self.n_step, dtype=np.integer)
+    self.prev_v = np.empty(self.n_step, dtype=np.integer)
+    self.prev_t = np.empty(self.n_step, dtype=np.bool)
 
     self.build_model()
 
   def build_model(self):
     self.networks, grads = [], []
 
-    with tf.variable_scope('t%d' % self.thread_id) as scope:
+    with tf.variable_scope('thread%d' % self.thread_id) as scope:
+      self.optim_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
+
       for step in xrange(self.n_step):
-        with tf.variable_scope('A3C_%d' % step) as scope:
+        with tf.name_scope('A3C_%d' % step) as scope:
           network = DeepQNetwork(self.data_format,
                                 self.history_length,
                                 self.screen_height,
@@ -68,26 +71,7 @@ class A3C_FF(object):
           summaries.append(
               tf.histogram_summary('%s/gradients' % var.op.name, grad))
 
-      self.optim_step = tf.placeholder('int32', None, name='optim_step')
-
-      import ipdb; ipdb.set_trace() 
-      self.apply_gradeint_op = self.global_optim.apply_gradients(
-          self.global_model.variables, accumulated_grads)
-
-      if False: #self.pid == 0:
-        for var in tf.trainable_variables():
-          summaries.append(tf.histogram_summary(var.op.name, var))
-
-        # Track the moving averages of all trainable variables.
-        variable_averages = tf.train.ExponentialMovingAverage(
-            cifar10.MOVING_AVERAGE_DECAY, global_step)
-        variables_averages_op = variable_averages.apply(tf.trainable_variables())
-
-        self.train_op = tf.group(
-            self.policy_apply_gradeint_op, self.value_apply_gradient_op, variables_averages_op)
-
-        # Create a saver.
-        saver = tf.train.Saver(tf.all_variables())
+      self.apply_gradeint_op = self.global_optim.apply_gradients(accumulated_grads, global_step=self.optim_step)
 
   def act(self, s_t, reward, terminal):
     logger.info(" [%d] ACT : %s, %s" % (self.thread_id, reward, terminal))
@@ -98,7 +82,7 @@ class A3C_FF(object):
     if self.min_reward:
       reward = max(self.min_reward, reward)
 
-    self.prev_rewards[self.t - 1] = reward
+    self.prev_r[self.t - 1] = reward
 
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
       r, a, s = {}, {}, {t: s_t}
@@ -116,7 +100,7 @@ class A3C_FF(object):
 
       self.sess.run(self.self.train_op, feed_dict=data)
     else:
-      Q = self.sess.run([self.networks[0].value], {self.networks[0].s_t: s_t})
+      Q = self.sess.run([self.networks[0].value], {self.networks[0].s_t: [s_t]})
 
     if not terminal:
       self.prev_s[self.t] = s_t
@@ -126,6 +110,8 @@ class A3C_FF(object):
     else:
       print "Should implement"
       pass
+
+    return self.start_t - self.t
 
   def copy_from_global(self):
     for network in self.networks:

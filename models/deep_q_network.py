@@ -29,17 +29,9 @@ class DeepQNetwork(object):
       self.l4, self.w['l4_w'], self.w['l4_b'] = \
           linear(self.l3, 512, activation_fn=activation_fn, name='l4_linear')
 
-    with tf.variable_scope('copy_from_target'):
-      self.w_input = {}
-      self.w_assign_op = {}
-
-      for name in self.w.keys():
-        self.w_input[name] = tf.placeholder('float32', self.w[name].get_shape().as_list(), name=name)
-        self.w_assign_op[name] = self.w[name].assign(self.w_input[name])
-
     with tf.variable_scope('policy'):
       # 512 -> action_size
-      self.logits, self.w['p_w'], self.w['p_b'] = linear(self.l4, action_size, name='logits')
+      self.logits, self.w['p_w'], self.w['p_b'] = linear(self.l4, action_size, name='linear')
 
       self.policy = tf.nn.softmax(self.logits, name='pi')
       self.log_policy = tf.log(tf.nn.softmax(self.logits))
@@ -52,22 +44,27 @@ class DeepQNetwork(object):
 
     with tf.variable_scope('value'):
       # 512 -> 1
-      self.value, self.w['q_w'], self.w['q_b'] = linear(self.l4, 1, name='V')
+      self.value, self.w['q_w'], self.w['q_b'] = linear(self.l4, 1, name='linear')
 
     with tf.variable_scope('optim'):
       self.R = tf.placeholder('float32', [None], name='target_reward')
 
-      with tf.variable_scope('policy'):
-        self.action = tf.placeholder('int64', [None], name='action')
+      self.action = tf.placeholder('int64', [None], name='action')
+      action_one_hot = tf.one_hot(self.action, action_size, 1.0, 0.0, name='action_one_hot')
 
-        action_one_hot = tf.one_hot(self.action, action_size, 1.0, 0.0, name='action_one_hot')
-        self.policy_loss = tf.reduce_sum(self.log_policy * action_one_hot, 1) \
-            * (self.R - self.value + beta * self.entropy)
-
-      with tf.variable_scope('value'):
-        self.value_loss = tf.pow(self.R - self.value, 2)
+      self.policy_loss = tf.reduce_sum(self.log_policy * action_one_hot, 1) \
+          * (self.R - self.value + beta * self.entropy)
+      self.value_loss = tf.pow(self.R - self.value, 2)
 
       self.total_loss = self.policy_loss + self.value_loss
+
+    with tf.variable_scope('copy_from_target'):
+      self.w_input = {}
+      self.w_assign_op = {}
+
+      for name in self.w.keys():
+        self.w_input[name] = tf.placeholder('float32', self.w[name].get_shape().as_list(), name=name)
+        self.w_assign_op[name] = self.w[name].assign(self.w_input[name])
 
   def calc_policy_value(self, s_t):
     return self.sess.run([self.policy, self.value], {self.s_t: s_t})

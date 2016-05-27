@@ -50,18 +50,23 @@ logger.setLevel(config.log_level)
 tf.set_random_seed(config.random_seed)
 random.seed(config.random_seed)
 
+global_t = 0
+should_stop = False
+
 def main(_):
   with tf.Session() as sess:
-    global_network = DeepQNetwork(config.data_format,
-                                  config.history_length,
-                                  config.screen_height,
-                                  config.screen_width,
-                                  gym.make(config.env_name).action_space.n)
-    global_optim = tf.train.RMSPropOptimizer(config.learning_rate, config.decay, config.momentum, config.epsilon)
+    with tf.variable_scope('master') as scope:
+      global_network = DeepQNetwork(config.data_format,
+                                    config.history_length,
+                                    config.screen_height,
+                                    config.screen_width,
+                                    gym.make(config.env_name).action_space.n)
+      global_optim = tf.train.RMSPropOptimizer(config.learning_rate, config.decay, config.momentum, config.epsilon)
 
     global_t = 0
-    thread_stop = False
+
     def train_function(idx):
+      global global_t
       model = models[idx]
       state, reward, terminal = model.env.new_random_game()
 
@@ -69,21 +74,31 @@ def main(_):
         diff_global_t = model.act(state, reward, terminal)
         global_t += diff_global_t
 
+    # Define thread-specific models
     models = []
     for thread_id in range(config.n_thread):
       model = A3C_FF(thread_id, config, sess, global_network, global_optim)
       models.append(model)
 
+    # Initialize and load model weights
     tf.initialize_all_variables().run()
-    saver = tf.train.Saver(global_network.w.values(), max_to_keep=30)
 
+    per_thread_steps = [model.optim_step for model in models]
+    saver = tf.train.Saver(global_network.w.values() + per_thread_steps, max_to_keep=30)
+
+    # copy weights from the global models
     for model in models:
       model.copy_from_global()
 
+    # Prepare each threads to run asynchronously
     threads = []
     for idx in range(config.n_thread):
       threads.append(Thread(target=train_function, args=(idx,)))
 
+    # Test for syncrhnous training
+    train_function(0)
+
+    # Execute and wait for the end of the training
     for thread in threads:
       thread.start()
 
