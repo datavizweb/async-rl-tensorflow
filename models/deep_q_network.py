@@ -33,10 +33,10 @@ class DeepQNetwork(object):
 
     with tf.variable_scope('policy'):
       # 512 -> action_size
-      self.logits, self.w['p_w'], self.w['p_b'] = linear(self.l4, action_size, name='linear')
+      self.policy_logits, self.w['p_w'], self.w['p_b'] = linear(self.l4, action_size, name='linear')
 
-      self.policy = tf.nn.softmax(self.logits, name='pi')
-      self.log_policy = tf.log(tf.nn.softmax(self.logits))
+      self.policy = tf.nn.softmax(self.policy_logits, name='pi')
+      self.log_policy = tf.log(tf.nn.softmax(self.policy_logits))
       self.entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
 
       self.pred_action = tf.argmax(self.policy, dimension=1)
@@ -51,8 +51,8 @@ class DeepQNetwork(object):
     with tf.variable_scope('optim'):
       self.R = tf.placeholder('float32', [None], name='target_reward')
 
-      self.action = tf.placeholder('int64', [None], name='action')
-      action_one_hot = tf.one_hot(self.action, action_size, 1.0, 0.0, name='action_one_hot')
+      self.true_action = tf.placeholder('int64', [None], name='action')
+      action_one_hot = tf.one_hot(self.true_action, action_size, 1.0, 0.0, name='action_one_hot')
 
       self.policy_loss = tf.reduce_sum(self.log_policy * action_one_hot, 1) \
           * (self.R - self.value + beta * self.entropy)
@@ -68,8 +68,8 @@ class DeepQNetwork(object):
         self.w_input[name] = tf.placeholder('float32', self.w[name].get_shape().as_list(), name=name)
         self.w_assign_op[name] = self.w[name].assign(self.w_input[name])
 
-  def calc_policy_value(self, s_t):
-    return self.sess.run([self.policy, self.value], {self.s_t: s_t})
+  def calc_policy_logits_value_action(self, s_t):
+    return self.sess.run([self.policy_logits, self.value, self.pred_action], {self.s_t: s_t})
 
   def calc_policy(self, s_t):
     return self.policy.eval({self.s_t: s_t})

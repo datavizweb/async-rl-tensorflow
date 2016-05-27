@@ -34,7 +34,8 @@ class A3C_FF(object):
     self.data_format = config.data_format
     self.history_length = config.history_length
 
-    self.prev_s = np.empty((self.t_max, self.history_length, config.screen_height, config.screen_width), dtype=np.float16)
+    #self.prev_s = np.empty((self.t_max, self.history_length, config.screen_height, config.screen_width), dtype=np.float16)
+    self.prev_p_logits = np.empty(self.t_max, dtype=np.integer)
     self.prev_r = np.empty(self.t_max, dtype=np.integer)
     self.prev_v = np.empty(self.t_max, dtype=np.integer)
     self.prev_t = np.empty(self.t_max, dtype=np.bool)
@@ -72,8 +73,8 @@ class A3C_FF(object):
 
       self.apply_gradeint_op = self.global_optim.apply_gradients(accumulated_grads, global_step=self.optim_step)
 
-  def act(self, s_t, r_t, t_t):
-    logger.info(" [%d] ACT : %s, %s" % (self.thread_id, r_t, t_t))
+  def act(self, s_t, r_t, terminal):
+    logger.info(" [%d] ACT : %s, %s" % (self.thread_id, r_t, terminal))
 
     # clip reward
     if self.max_reward:
@@ -83,34 +84,39 @@ class A3C_FF(object):
 
     self.prev_r[self.t - 1] = r_t
 
-    if (t_t and self.t_start < self.t) or self.t - self.t_start == self.t_max:
+    if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
       r, a, s = {}, {}, {self.t: s_t}
-      if t_t:
+
+      if terminal:
         r[self.t] = 0
       else:
-        _, r[self.t] = self.networks[0].calc_policy_value(s_t)
+        r[self.t] = self.networks[0].calc_value([s_t])
 
-      for t in xrange(self.t_start, self.t, -1):
-        r[self.t] = self.prev_r[self.t] + self.gamma * r[self.t]
+      for t in xrange(self.t - 1, self.t_start, -1):
+        r[t] = self.prev_r[t + 1] + self.gamma * r[t]
 
       data = {}
-      data.update({network.s_t: self.prev_s[self.t] for network in self.networks})
-      data.update({network.R: r[self.t] for network in self.networks})
+      data.update({network.R: r[t] for t, network in enumerate(self.networks)})
+      data.update({network.policy_logits: self.prev_p_logits[t] for t, network in enumerate(self.networks)})
+      data.update({network.value: self.prev_v[t] for t, network in enumerate(self.networks)})
 
       self.sess.run(self.apply_gradeint_op, feed_dict=data)
       self.copy_from_global()
 
-      self.prev_s *= 0.
       self.prev_r *= 0
-      self.prev_v *= 0
 
       self.t_start = self.t
+      action = None
     else:
-      p, v = self.networks[0].calc_policy_value(s_t=[s_t])
-      self.prev_v[self.t] = v
+      p_logits, v, action = self.networks[0].calc_policy_logits_value_action([s_t])
+      action = action[0]
+
+      self.prev_p_logits[self.t] = p_logits[0][action]
+      self.prev_v[self.t] = v[0][0]
+
       self.t += 1
 
-    return self.t_start - self.t
+    return action
 
   def copy_from_global(self):
     for network in self.networks:
