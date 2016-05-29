@@ -2,6 +2,7 @@ import gym
 import random
 import logging
 import numpy as np
+from tqdm import tqdm
 import tensorflow as tf
 from threading import Thread
 
@@ -74,13 +75,16 @@ def main(_):
       model = models[idx]
       state, reward, terminal = model.env.new_random_game()
 
-      while True:
+      for i in tqdm(range(100000)):
         # 1. predict
         action = model.predict(state)
         # 2. act
         state, reward, terminal = model.env.step(action, is_training=True)
         # 3. observe
         model.observe(state, reward, terminal)
+
+        if terminal:
+          state, reward, terminal = model.env.new_random_game()
 
     # Define thread-specific models
     models = []
