@@ -1,5 +1,18 @@
 import tensorflow as tf
 
+try:
+  import cv2
+  imresize = cv2.resize
+  imwrite = cv2.imwrite
+except:
+  import scipy.misc
+  imresize = scipy.misc.imresize
+  imwrite = scipy.misc.imsave
+
+def save_history_as_image(prefix, history):
+  for idx in range(0, 4):
+    imwrite("%s_%d.png" % (prefix, idx), history[:,:,idx])
+
 def accumulate_gradients(tower_grads):
   accumulate_grads = []
   for grad_and_vars in zip(*tower_grads):

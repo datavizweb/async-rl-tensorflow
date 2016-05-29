@@ -1,10 +1,12 @@
 import gym
 import random
 import logging
+import numpy as np
 import tensorflow as tf
 from threading import Thread
 
 from models.a3c import A3C_FF
+from models.utils import save_history_as_image
 from models.deep_q_network import DeepQNetwork
 
 flags = tf.app.flags

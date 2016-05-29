@@ -5,7 +5,7 @@ import tensorflow as tf
 
 from .deep_q_network import DeepQNetwork
 from models.environment import Environment
-from .utils import accumulate_gradients
+from .utils import accumulate_gradients, save_history_as_image
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,7 @@ class A3C_FF(object):
   def build_model(self):
     self.networks, grads = [], []
 
+
     with tf.variable_scope('thread%d' % self.thread_id) as scope:
       self.optim_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
 
@@ -101,11 +102,11 @@ class A3C_FF(object):
     return action
 
   def observe(self, s_t, r_t, terminal):
-    logger.info("%2d [%6d] a: %s, t: %s" % (self.thread_id, self.t, r_t, terminal))
+    logger.info("%2d [%6d] r: %s, t: %s" % (self.thread_id, self.t, r_t, terminal))
 
     r_t = max(self.min_reward, min(self.max_reward, r_t))
     self.prev_r[self.t] = r_t
-    self.prev_s[self.t] = s_t
+    self.prev_s[self.t] = s_t.copy()
 
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
       r = {}
@@ -115,12 +116,11 @@ class A3C_FF(object):
       else:
         r[self.t] = self.networks[0].calc_value([s_t])[0][0]
 
-      print 1, r
-
       for t in xrange(self.t - 1, self.t_start - 1, -1):
         r[t] = self.prev_r[t] + self.gamma * r[t + 1]
 
-      print 2, r
+      print r
+      print self.prev_r
 
       data = {}
       data.update({network.R: [r[t + self.t_start]] for t, network in enumerate(self.networks)})
@@ -130,11 +130,36 @@ class A3C_FF(object):
       #data.update({network.value: [self.prev_v[t]] for t, network in enumerate(self.networks)})
       #data.update({network.value: [self.prev_v[t]] for t, network in enumerate(self.networks)})
 
+      #for t, network in enumerate(self.networks):
+      #  save_history_as_image("%s_%s" % (self.t, t), self.prev_s[t + self.t_start])
+
+      #  for i in xrange(4):
+      #    print np.sum(self.prev_s[t + self.t_start][:,:,i])
+
       self.sess.run(self.apply_gradeint_op, feed_dict=data)
+      _, p0, p1, p2, p3, e0, e1, e2, e3 = self.sess.run([
+        self.apply_gradeint_op,
+        self.networks[0].policy,
+        self.networks[1].policy,
+        self.networks[2].policy,
+        self.networks[3].policy,
+        self.networks[0].entropy,
+        self.networks[1].entropy,
+        self.networks[2].entropy,
+        self.networks[3].entropy,
+        ], feed_dict=data)
+
+      logger.info("entropy: %s, probs: %s" % (e0, p0))
+      logger.info("entropy: %s, probs: %s" % (e1, p1))
+      logger.info("entropy: %s, probs: %s" % (e2, p2))
+      logger.info("entropy: %s, probs: %s" % (e3, p3))
+
+      #import ipdb; ipdb.set_trace() 
       self.copy_from_global()
 
       self.prev_a = {self.t: self.prev_a[self.t]} # *= 0
       self.prev_s = {self.t: self.prev_s[self.t]} # *= 0
+      self.prev_r = {self.t: self.prev_r[self.t]} # *= 0
       self.t_start = self.t
 
     self.t += 1
