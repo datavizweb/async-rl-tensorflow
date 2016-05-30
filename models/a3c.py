@@ -98,7 +98,7 @@ class A3C_FF(object):
     return action
 
   def observe(self, s_t, r_t, terminal):
-    logger.info("%2d [%6d] r: %s, t: %s" % (self.thread_id, self.t, r_t, terminal))
+    #logger.info("%2d [%6d] r: %s, t: %s" % (self.thread_id, self.t, r_t, terminal))
 
     r_t = max(self.min_reward, min(self.max_reward, r_t))
     self.prev_r[self.t] = r_t
@@ -114,9 +114,6 @@ class A3C_FF(object):
 
       for t in xrange(self.t - 1, self.t_start - 1, -1):
         r[t] = self.prev_r[t + 1] + self.gamma * r[t + 1]
-
-      print r
-      print self.prev_r
 
       data = {}
       data.update({

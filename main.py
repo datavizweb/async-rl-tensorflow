@@ -5,9 +5,10 @@ import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from threading import Thread
+import multiprocessing as mp
 
 from models.a3c import A3C_FF
-from models.utils import save_history_as_image
+from models.utils import make_checkpoint_dir
 from models.deep_q_network import DeepQNetwork
 
 flags = tf.app.flags
@@ -16,8 +17,7 @@ flags = tf.app.flags
 flags.DEFINE_string('data_format', 'NHWC', 'The format of convolutional filter')
 flags.DEFINE_string('ep_start', 1., 'The value of epsilon at start in e-greedy')
 flags.DEFINE_string('ep_end', 0.1, 'The value of epsilnon at the end in e-greedy')
-flags.DEFINE_string('ep_end_t', 100, 'The time t when epsilon reach ep_end')
-flags.DEFINE_string('test_t', 10, 'The time t when epsilon reach ep_end')
+flags.DEFINE_string('ep_end_t', 10000000, 'The time t when epsilon reach ep_end')
 
 # Environment
 flags.DEFINE_string('env_name', 'Breakout-v0', 'The name of gym environment to use')
@@ -38,7 +38,10 @@ flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
-flags.DEFINE_integer('n_thread', 1, 'The number of threads to run asynchronously')
+flags.DEFINE_string('t_test', 100000, 'The time t when epsilon reach ep_end')
+flags.DEFINE_string('t_end', 10000000, 'The time t when epsilon reach ep_end')
+flags.DEFINE_integer('n_worker', 4, 'The number of threads to run asynchronously')
+flags.DEFINE_boolean('use_thread', False, 'Whether to use thread or process for each worker')
 
 # Debug
 flags.DEFINE_boolean('display', False, 'Whether to do display the game screen or not')
@@ -49,17 +52,23 @@ config = flags.FLAGS
 
 logger = logging.getLogger()
 logger.propagate = False
-
 logger.setLevel(config.log_level)
 
 # Set random seed
 tf.set_random_seed(config.random_seed)
 random.seed(config.random_seed)
 
-global_t = 0
-should_stop = False
+if config.use_thread:
+  t_global = 0
+  should_stop = False
+else:
+  counter = mp.Value('l', 0)
+  should_stop = mp.Value('l', False)
 
 def main(_):
+  if config.use_thread:
+    global t_global
+
   with tf.Session() as sess:
     with tf.variable_scope('master') as scope:
       global_network = DeepQNetwork(sess, config.data_format,
@@ -71,37 +80,42 @@ def main(_):
 
     # Define thread-specific models
     models = []
-    for thread_id in range(config.n_thread):
-      model = A3C_FF(thread_id, config, sess, global_network, global_optim)
+    for worker_id in range(config.n_worker):
+      model = A3C_FF(worker_id, config, sess, global_network, global_optim)
       models.append(model)
+
+    t_global_op = tf.Variable(0, trainable=False, name='t_global')
+    t_global_input = tf.placeholder('int32', name='t_global_input')
+    t_global_assign = t_global_op.assign(t_global_input)
 
     # Initialize and load model weights
     tf.initialize_all_variables().run()
 
-    global_t = 0
-    global_t_op = tf.Variable(0, trainable=False)
+    saver = tf.train.Saver(global_network.w.values() + [t_global_op], max_to_keep=30)
+    checkpoint_dir = make_checkpoint_dir(config)
 
-    saver = tf.train.Saver(global_network.w.values() + global_t_op, max_to_keep=30)
-    global_network.load_model()
+    global_network.load_model(saver, checkpoint_dir)
 
-    global_t = global_t_op.eval()
+    if config.use_thread:
+      t_global = t_global_op.eval()
+    else:
+      counter.value = t_global_op.eval()
 
     # copy weights from the global models
     for model in models:
       model.copy_from_global()
 
     def train_function(idx):
-      global global_t
+      if config.use_thread:
+        global t_global, should_stop
+      else:
+        t_global = counter.value
+
       model = models[idx]
       state, reward, terminal = model.env.new_random_game()
 
-      if idx == 0:
-
-      for i in tqdm(range(100000)):
-        if should_stop:
-          break
-
-        if global_t > config.ep_end_t:
+      for i in tqdm(range(100000), desc="worker_%d" % idx, initial=t_global):
+        if t_global > config.t_end:
           break
 
         # 1. predict
@@ -114,29 +128,37 @@ def main(_):
         if terminal:
           state, reward, terminal = model.env.new_random_game()
 
-        global_t += 1
-        global_t_inc.eval()
+        if config.use_thread:
+          t_global += 1
+        else:
+          with counter.get_lock():
+            counter.value += 1
+            t_global = counter.value
 
-        # only for the first thread
+        # job only for the first worker
         if idx == 0:
-          if global_t % config.test_t == config.test_t -1:
+          if t_global % config.t_test == config.t_test -1:
             # save
-            model.networks[0].save()
+            sess.run(t_global_assign, {t_global_input: t_global})
+            global_network.save_model(saver, checkpoint_dir, step=t_global)
+
+    # Test for signle thread
+    #train_function(0)
 
     # Prepare each threads to run asynchronously
-    threads = []
-    for idx in range(config.n_thread):
-      threads.append(Thread(target=train_function, args=(idx,)))
-
-    # Test for syncrhnous training
-    train_function(0)
+    workers = []
+    for idx in range(config.n_worker):
+      if config.use_thread:
+        workers.append(Thread(target=train_function, args=(idx,)))
+      else:
+        workers.append(mp.Process(target=train_function, args=(idx,)))
 
     # Execute and wait for the end of the training
-    for thread in threads:
-      thread.start()
+    for worker in workers:
+      worker.start()
 
-    for thread in threads:
-      thread.join()
+    for worker in workers:
+      worker.join()
 
 if __name__ == '__main__':
   tf.app.run()

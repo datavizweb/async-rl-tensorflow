@@ -1,3 +1,4 @@
+import os
 import tensorflow as tf
 
 try:
@@ -32,3 +33,14 @@ def accumulate_gradients(tower_grads):
       grad_and_var = (grad, v)
       accumulate_grads.append(grad_and_var)
   return accumulate_grads
+
+def make_checkpoint_dir(config):
+  keys = [
+    'data_format', 'env_name', 'n_action_repeat', 'screen_height',
+    'screen_width', 'history_length',
+  ]
+  names = []
+  for k, v in config.__dict__['__flags'].items():
+    if k in keys:
+      names.append("%s=%s" % (k, v))
+  return os.path.join('checkpoints', *names) + '/'

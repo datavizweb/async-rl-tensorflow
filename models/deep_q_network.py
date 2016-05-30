@@ -1,3 +1,4 @@
+import os
 import tensorflow as tf
 
 from .ops import conv2d, linear, batch_sample
@@ -84,16 +85,24 @@ class DeepQNetwork(object):
       for name in self.w.keys():
         self.sess.run(self.w_assign_op[name], {self.w_input[name]: target_model.w[name].eval()})
 
-  def load_model(self):
-    ckpt = tf.train.get_checkpoint_state(self.checkpoint_dir)
+  def save_model(self, saver, checkpoint_dir, step=None):
+    print(" [*] Saving checkpoints...")
+    model_name = type(self).__name__
+
+    if not os.path.exists(checkpoint_dir):
+      os.makedirs(checkpoint_dir)
+    saver.save(self.sess, checkpoint_dir, global_step=step)
+
+  def load_model(self, saver, checkpoint_dir):
+    ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
     if ckpt and ckpt.model_checkpoint_path:
       ckpt_name = os.path.basename(ckpt.model_checkpoint_path)
-      fname = os.path.join(self.checkpoint_dir, ckpt_name)
-      self.saver.restore(self.sess, fname)
+      fname = os.path.join(checkpoint_dir, ckpt_name)
+      saver.restore(self.sess, fname)
       print(" [*] Load SUCCESS: %s" % fname)
       return True
     else:
-      print(" [!] Load FAILED: %s" % self.checkpoint_dir)
+      print(" [!] Load FAILED: %s" % checkpoint_dir)
       return False
 
   @property
