@@ -20,7 +20,7 @@ class DeepQNetwork(object):
     else:
       raise ValueError("unknown data_format : %s" % data_format)
 
-    with tf.variable_scope('Nature_DQN'), tf.device('/gpu:0'):
+    with tf.variable_scope('Nature_DQN'), tf.device('/cpu:0'):
       self.w = {}
 
       self.l0 = tf.div(self.s_t, 255.)

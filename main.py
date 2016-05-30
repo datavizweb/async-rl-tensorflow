@@ -1,4 +1,5 @@
 import gym
+import time
 import random
 import logging
 import numpy as np
@@ -38,10 +39,11 @@ flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
-flags.DEFINE_string('t_test', 100000, 'The time t when epsilon reach ep_end')
+flags.DEFINE_string('t_test', 100, 'The time t when epsilon reach ep_end')
+flags.DEFINE_string('t_save', 100000, 'The time t when epsilon reach ep_end')
 flags.DEFINE_string('t_end', 10000000, 'The time t when epsilon reach ep_end')
 flags.DEFINE_integer('n_worker', 4, 'The number of threads to run asynchronously')
-flags.DEFINE_boolean('use_thread', False, 'Whether to use thread or process for each worker')
+flags.DEFINE_boolean('use_thread', True, 'Whether to use thread or process for each worker')
 
 # Debug
 flags.DEFINE_boolean('display', False, 'Whether to do display the game screen or not')
@@ -69,7 +71,9 @@ def main(_):
   if config.use_thread:
     global t_global
 
-  with tf.Session() as sess:
+  #with tf.Session() as sess:
+  with tf.Session(config=tf.ConfigProto(
+      intra_op_parallelism_threads=1)) as sess:
     with tf.variable_scope('master') as scope:
       global_network = DeepQNetwork(sess, config.data_format,
                                     config.history_length,
@@ -88,7 +92,8 @@ def main(_):
     t_global_input = tf.placeholder('int32', name='t_global_input')
     t_global_assign = t_global_op.assign(t_global_input)
 
-    # Initialize and load model weights
+    logger.info("Initialize and load model weights")
+
     tf.initialize_all_variables().run()
 
     saver = tf.train.Saver(global_network.w.values() + [t_global_op], max_to_keep=30)
@@ -101,20 +106,26 @@ def main(_):
     else:
       counter.value = t_global_op.eval()
 
-    # copy weights from the global models
+    logger.info("Copy weights from the global models")
+
     for model in models:
       model.copy_from_global()
 
-    def train_function(idx):
+    def train_function(worker_id):
       if config.use_thread:
         global t_global, should_stop
       else:
         t_global = counter.value
 
-      model = models[idx]
+      model = models[worker_id]
       state, reward, terminal = model.env.new_random_game()
 
-      for i in tqdm(range(100000), desc="worker_%d" % idx, initial=t_global):
+      idx = 0
+      start_time = time.time()
+
+      while True:
+        idx += 1
+
         if t_global > config.t_end:
           break
 
@@ -135,23 +146,31 @@ def main(_):
             counter.value += 1
             t_global = counter.value
 
-        # job only for the first worker
-        if idx == 0:
-          if t_global % config.t_test == config.t_test -1:
+        # Test
+        if t_global % config.t_test == config.t_test - 1:
+          current_time = time.time()
+          print worker_id, idx / (current_time - start_time)
+          idx, start_time = 0, current_time
+
+        # Job only for the first worker
+        if worker_id == 0:
+          if t_global % config.t_save == config.t_save - 1:
             # save
             sess.run(t_global_assign, {t_global_input: t_global})
             global_network.save_model(saver, checkpoint_dir, step=t_global)
 
     # Test for signle thread
-    #train_function(0)
+    # train_function(0)
 
     # Prepare each threads to run asynchronously
     workers = []
-    for idx in range(config.n_worker):
+    for worker_id in range(config.n_worker):
       if config.use_thread:
-        workers.append(Thread(target=train_function, args=(idx,)))
+        workers.append(Thread(target=train_function, args=(worker_id,)))
       else:
-        workers.append(mp.Process(target=train_function, args=(idx,)))
+        workers.append(mp.Process(target=train_function, args=(worker_id,)))
+
+    logger.info("Start workers")
 
     # Execute and wait for the end of the training
     for worker in workers:
