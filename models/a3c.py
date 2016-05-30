@@ -55,10 +55,7 @@ class A3C_FF(object):
   def build_model(self):
     self.networks, grads = [], []
 
-
     with tf.variable_scope('thread%d' % self.thread_id) as scope:
-      self.optim_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
-
       self.contain_grads = []
       for step in xrange(self.t_max):
         with tf.name_scope('A3C_%d' % step) as scope:
@@ -81,7 +78,7 @@ class A3C_FF(object):
         accumulated_grads = accumulate_gradients(grads[:step])
 
         self.apply_gradeint_op[step] = \
-            self.global_optim.apply_gradients(accumulated_grads, global_step=self.optim_step)
+            self.global_optim.apply_gradients(accumulated_grads)
 
   def predict(self, s_t, test_ep=None):
     ep = test_ep or (self.ep_end +

@@ -16,7 +16,8 @@ flags = tf.app.flags
 flags.DEFINE_string('data_format', 'NHWC', 'The format of convolutional filter')
 flags.DEFINE_string('ep_start', 1., 'The value of epsilon at start in e-greedy')
 flags.DEFINE_string('ep_end', 0.1, 'The value of epsilnon at the end in e-greedy')
-flags.DEFINE_string('ep_end_t', 1000000, 'The time t when epsilon reach ep_end')
+flags.DEFINE_string('ep_end_t', 100, 'The time t when epsilon reach ep_end')
+flags.DEFINE_string('test_t', 10, 'The time t when epsilon reach ep_end')
 
 # Environment
 flags.DEFINE_string('env_name', 'Breakout-v0', 'The name of gym environment to use')
@@ -68,14 +69,41 @@ def main(_):
                                     gym.make(config.env_name).action_space.n)
       global_optim = tf.train.RMSPropOptimizer(config.learning_rate, config.decay, config.momentum, config.epsilon)
 
+    # Define thread-specific models
+    models = []
+    for thread_id in range(config.n_thread):
+      model = A3C_FF(thread_id, config, sess, global_network, global_optim)
+      models.append(model)
+
+    # Initialize and load model weights
+    tf.initialize_all_variables().run()
+
     global_t = 0
+    global_t_op = tf.Variable(0, trainable=False)
+
+    saver = tf.train.Saver(global_network.w.values() + global_t_op, max_to_keep=30)
+    global_network.load_model()
+
+    global_t = global_t_op.eval()
+
+    # copy weights from the global models
+    for model in models:
+      model.copy_from_global()
 
     def train_function(idx):
       global global_t
       model = models[idx]
       state, reward, terminal = model.env.new_random_game()
 
+      if idx == 0:
+
       for i in tqdm(range(100000)):
+        if should_stop:
+          break
+
+        if global_t > config.ep_end_t:
+          break
+
         # 1. predict
         action = model.predict(state)
         # 2. act
@@ -86,21 +114,14 @@ def main(_):
         if terminal:
           state, reward, terminal = model.env.new_random_game()
 
-    # Define thread-specific models
-    models = []
-    for thread_id in range(config.n_thread):
-      model = A3C_FF(thread_id, config, sess, global_network, global_optim)
-      models.append(model)
+        global_t += 1
+        global_t_inc.eval()
 
-    # Initialize and load model weights
-    tf.initialize_all_variables().run()
-
-    per_thread_steps = [model.optim_step for model in models]
-    saver = tf.train.Saver(global_network.w.values() + per_thread_steps, max_to_keep=30)
-
-    # copy weights from the global models
-    for model in models:
-      model.copy_from_global()
+        # only for the first thread
+        if idx == 0:
+          if global_t % config.test_t == config.test_t -1:
+            # save
+            model.networks[0].save()
 
     # Prepare each threads to run asynchronously
     threads = []

@@ -84,6 +84,18 @@ class DeepQNetwork(object):
       for name in self.w.keys():
         self.sess.run(self.w_assign_op[name], {self.w_input[name]: target_model.w[name].eval()})
 
+  def load_model(self):
+    ckpt = tf.train.get_checkpoint_state(self.checkpoint_dir)
+    if ckpt and ckpt.model_checkpoint_path:
+      ckpt_name = os.path.basename(ckpt.model_checkpoint_path)
+      fname = os.path.join(self.checkpoint_dir, ckpt_name)
+      self.saver.restore(self.sess, fname)
+      print(" [*] Load SUCCESS: %s" % fname)
+      return True
+    else:
+      print(" [!] Load FAILED: %s" % self.checkpoint_dir)
+      return False
+
   @property
   def variables(self):
     return self.w.items()
