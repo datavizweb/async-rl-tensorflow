@@ -1,10 +1,13 @@
 import gym
 import random
 import logging
+from tqdm import tqdm
 import tensorflow as tf
 import multiprocessing as mp
+from threading import Thread
 
-from src.worker import Worker
+from src.utils import timeit
+from src.models import A3C_FF
 from src.network import Network
 from src.environment import Environment
 
@@ -70,19 +73,24 @@ def main(_):
                                              config.momentum,
                                              config.epsilon)
 
+    # prepare variables for each thread
+    networks, envs, A3C_FFs = {}, {}, {}
+    for worker_id in xrange(config.n_worker):
+      networks[worker_id] = make_network(sess, global_network, name='A3C_%d' % worker_id)
+      envs[worker_id] = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
+                                    config.history_length, config.data_format, config.display,
+                                    config.screen_height, config.screen_width)
+      A3C_FFs[worker_id] = A3C_FF(worker_id, global_network, global_optim, networks[worker_id], envs[worker_id])
+
+    @timeit
     def worker_func(worker_id):
-      local_network = make_network(sess, global_network, name='A3C_%d' % worker_id)
-      local_env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
-                              config.history_length, config.data_format, config.display,
-                              config.screen_height, config.screen_width)
-      worker = Worker(worker_id, global_network, global_optim, local_network, local_env)
+      network, env, model = networks[worker_id], envs[worker_id], A3C_FFs[worker_id]
 
       idx = 0
-      worker.env.new_random_game()
+      model.env.new_random_game()
 
-      while True:
-        worker.env.step(1, is_training=True)
-        print worker_id, idx
+      for _ in tqdm(range(10000), desc="%s" % worker_id):
+        model.env.step(1, is_training=True)
         idx += 1
 
     # Prepare each workers to run asynchronously
