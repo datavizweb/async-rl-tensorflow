@@ -1,11 +1,12 @@
 import gym
 import random
 import logging
-import multiprocessing
 import tensorflow as tf
+import multiprocessing as mp
 
-from worker import Worker
-from environment import Environment
+from src.worker import Worker
+from src.network import Network
+from src.environment import Environment
 
 flags = tf.app.flags
 
@@ -34,7 +35,7 @@ flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
-flags.DEFINE_integer('n_worker', 1, 'The number of workers to run asynchronously')
+flags.DEFINE_integer('n_worker', 4, 'The number of workers to run asynchronously')
 
 # Debug
 flags.DEFINE_boolean('display', False, 'Whether to do display the game screen or not')
@@ -52,35 +53,42 @@ logger.setLevel(config.log_level)
 tf.set_random_seed(config.random_seed)
 random.seed(config.random_seed)
 
-bal_t = 0
-should_stop = False
-
-def make_network(global_network=None):
-  return Network(sess, config.data_format,
-          config.history_length,
-          config.screen_height,
-          config.screen_width,
-          gym.make(config.env_name).action_space.n,
-          global_network=global_network)
+def make_network(sess, global_network=None, name=None):
+  with tf.variable_scope(name) as scope:
+    return Network(sess, config.data_format,
+            config.history_length,
+            config.screen_height,
+            config.screen_width,
+            gym.make(config.env_name).action_space.n,
+            global_network=global_network)
 
 def main(_):
   with tf.Session() as sess:
-    global_network = make_network()
+    global_network = make_network(sess, name='A3C_global')
     global_optim = tf.train.RMSPropOptimizer(config.learning_rate,
                                              config.decay,
                                              config.momentum,
                                              config.epsilon)
 
     def worker_func(worker_id):
-      local_network = make_network(global_network)
-      local_env = Environment(config.env_id, config.history_length, config.screen_height, config.screen_width,
-                              config.action_repeat, config.max_random_start, use_cpu=True)
+      local_network = make_network(sess, global_network, name='A3C_%d' % worker_id)
+      local_env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
+                              config.history_length, config.data_format, config.display,
+                              config.screen_height, config.screen_width)
       worker = Worker(worker_id, global_network, global_optim, local_network, local_env)
+
+      idx = 0
+      worker.env.new_random_game()
+
+      while True:
+        worker.env.step(1, is_training=True)
+        print worker_id, idx
+        idx += 1
 
     # Prepare each workers to run asynchronously
     workers = []
     for idx in range(config.n_worker):
-      workers.append(Thread(target=worker_func, args=(idx,)))
+      workers.append(mp.Process(target=worker_func, args=(idx,)))
 
     # Execute and wait for the end of the training
     for worker in workers:

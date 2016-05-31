@@ -1,5 +1,4 @@
 import tensorflow as tf
-from tensorflow.contrib.layers.python.layers import initializers
 
 def conv2d(x,
            output_dim,

@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from .ops import conv2d, linear, batch_sample
 
-class DeepQNetwork(object):
+class Network(object):
   def __init__(self, sess, data_format, history_length,
                screen_height, screen_width,
                action_size, activation_fn=tf.nn.relu,
