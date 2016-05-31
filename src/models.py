@@ -33,6 +33,6 @@ class A3C_FF(object):
     if random.random() < 0:
       action = random.randrange(self.env.action_size)
     else:
-      action = self.network.pred_action.eval({self.network.s_t: [state]})
+      action = self.network.pred_action.eval({self.network.s_t: [state]}, session=self.network.sess)
 
     return action

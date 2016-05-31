@@ -58,20 +58,23 @@ random.seed(config.random_seed)
 
 def main(_):
   with tf.Session() as sess:
+    action_size = gym.make(config.env_name).action_space.n
+
     def make_network(sess, global_network=None, name=None):
       with tf.variable_scope(name) as scope:
         return Network(sess, config.data_format,
                 config.history_length,
                 config.screen_height,
                 config.screen_width,
-                gym.make(config.env_name).action_space.n,
-                global_network=global_network)
+                action_size,
+                global_network=global_network,)
 
     global_network = make_network(sess, name='A3C_global')
     global_optim = tf.train.RMSPropOptimizer(config.learning_rate,
                                              config.decay,
                                              config.momentum,
                                              config.epsilon)
+
     # prepare variables for each thread
     A3C_FFs = {}
     for worker_id in xrange(config.n_worker):
@@ -82,6 +85,8 @@ def main(_):
 
       A3C_FFs[worker_id] = A3C_FF(worker_id, global_network, global_optim, network, env, config)
 
+    tf.initialize_all_variables().run()
+
     @timeit
     def worker_func(worker_id):
       model = A3C_FFs[worker_id]
@@ -89,7 +94,7 @@ def main(_):
       idx = 0
       model.env.new_random_game()
 
-      for _ in xrange(10):
+      for _ in xrange(1000):
         state, reward, terminal = model.env.step(-1, is_training=True)
         action = model.predict(state)
         idx += 1

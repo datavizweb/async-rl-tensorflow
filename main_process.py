@@ -57,38 +57,41 @@ tf.set_random_seed(config.random_seed)
 random.seed(config.random_seed)
 
 def main(_):
+  action_size = gym.make(config.env_name).action_space.n
   def make_network(sess, global_network=None, name=None):
     with tf.variable_scope(name) as scope:
       return Network(sess, config.data_format,
               config.history_length,
               config.screen_height,
               config.screen_width,
-              gym.make(config.env_name).action_space.n,
+              action_size,
               global_network=global_network)
 
   server = tf.train.Server.create_local_server()
 
-  with tf.Session(server.target) as sess:
-    global_network = make_network(sess, name='A3C_global')
-    global_optim = tf.train.RMSPropOptimizer(config.learning_rate,
-                                              config.decay,
-                                              config.momentum,
-                                              config.epsilon)
+  main_sess = tf.Session(server.target)
+  global_network = make_network(main_sess, name='A3C_global')
+  global_optim = tf.train.RMSPropOptimizer(config.learning_rate,
+                                            config.decay,
+                                            config.momentum,
+                                            config.epsilon)
+  tf.initialize_all_variables().run(session=main_sess)
 
   @timeit
   def worker_func(worker_id):
-    with tf.Session("grpc://localhost:2222") as sess:
+    with tf.Session(server.target) as sess:
       network = make_network(sess, global_network, name='A3C_%d' % worker_id)
       env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
                                     config.history_length, config.data_format, config.display,
                                     config.screen_height, config.screen_width)
 
       model = A3C_FF(worker_id, global_network, global_optim, network, env, config)
+      tf.initialize_all_variables().run(session=sess)
 
       idx = 0
       model.env.new_random_game()
 
-      for _ in xrange(10):
+      for _ in xrange(1000):
         state, reward, terminal = model.env.step(-1, is_training=True)
         action = model.predict(state)
         idx += 1
@@ -96,8 +99,7 @@ def main(_):
   # Prepare each workers to run asynchronously
   workers = []
   for idx in range(config.n_worker):
-    #workers.append(mp.Process(target=worker_func, args=(idx,)))
-    workers.append(Thread(target=worker_func, args=(idx,)))
+    workers.append(mp.Process(target=worker_func, args=(idx,)))
 
   # Execute and wait for the end of the training
   for worker in workers:
