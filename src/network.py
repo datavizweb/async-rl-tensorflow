@@ -63,15 +63,15 @@ class Network(object):
 
       self.total_loss = self.policy_loss + self.value_loss
 
-    if global_network != None:
-      with tf.variable_scope('copy_from_target'):
-        copy_ops = []
+    #if global_network != None:
+    #  with tf.variable_scope('copy_from_target'):
+    #    copy_ops = []
 
-        for name in self.w.keys():
-          copy_op = self.w[name].assign(global_network.w[name])
-          copy_ops.append(copy_op)
+    #    for name in self.w.keys():
+    #      copy_op = self.w[name].assign(global_network.w[name])
+    #      copy_ops.append(copy_op)
 
-        self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
+    #    self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
 
   def save_model(self, saver, checkpoint_dir, step=None):
     print(" [*] Saving checkpoints...")

@@ -77,20 +77,21 @@ def main(_):
 
   @timeit
   def worker_func(worker_id):
-    network = make_network(sess, global_network, name='A3C_%d' % worker_id)
-    env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
-                                  config.history_length, config.data_format, config.display,
-                                  config.screen_height, config.screen_width)
+    with tf.Session("grpc://localhost:2222") as sess:
+      network = make_network(sess, global_network, name='A3C_%d' % worker_id)
+      env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
+                                    config.history_length, config.data_format, config.display,
+                                    config.screen_height, config.screen_width)
 
-    model = A3C_FF(worker_id, global_network, global_optim, network, env, config)
+      model = A3C_FF(worker_id, global_network, global_optim, network, env, config)
 
-    idx = 0
-    model.env.new_random_game()
+      idx = 0
+      model.env.new_random_game()
 
-    for _ in xrange(10):
-      state, reward, terminal = model.env.step(-1, is_training=True)
-      action = model.predict(state)
-      idx += 1
+      for _ in xrange(10):
+        state, reward, terminal = model.env.step(-1, is_training=True)
+        action = model.predict(state)
+        idx += 1
 
   # Prepare each workers to run asynchronously
   workers = []
