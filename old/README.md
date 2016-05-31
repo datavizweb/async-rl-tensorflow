@@ -10,7 +10,7 @@ Tensorflow implementation of [Asynchronous Methods for Deep Reinforcement Learni
 - Python 2.7 or Python 3.3+
 - [gym](https://github.com/openai/gym)
 - [tqdm](https://github.com/tqdm/tqdm)
-- [OpenCV2](http://opencv.org/)
+- [OpenCV2](http://opencv.org/) or [Scipy](https://www.scipy.org/)
 - [TensorFlow](https://www.tensorflow.org/)
 
 
@@ -21,6 +21,11 @@ First, install prerequisites with:
     $ pip install tqdm gym[all]
 
 To train a model for SpaceInvaders:
+
+    $ CUDA_VISIBLE_DEVICES="" python main.py --use_thread=True
+
+
+## Results
 
 (in progress)
 
