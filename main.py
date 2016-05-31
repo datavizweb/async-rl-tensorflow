@@ -55,14 +55,27 @@ random.seed(config.random_seed)
 bal_t = 0
 should_stop = False
 
-def get_environment(config):
-  return Environment(config.env_id, config.history_length, config.screen_height, config.screen_width,
-                     config.action_repeat, config.max_random_start, use_cpu=True)
+def make_network(global_network=None):
+  return Network(sess, config.data_format,
+          config.history_length,
+          config.screen_height,
+          config.screen_width,
+          gym.make(config.env_name).action_space.n,
+          global_network=global_network)
 
 def main(_):
   with tf.Session() as sess:
-    def worker_func():
-      pass
+    global_network = make_network()
+    global_optim = tf.train.RMSPropOptimizer(config.learning_rate,
+                                             config.decay,
+                                             config.momentum,
+                                             config.epsilon)
+
+    def worker_func(worker_id):
+      local_network = make_network(global_network)
+      local_env = Environment(config.env_id, config.history_length, config.screen_height, config.screen_width,
+                              config.action_repeat, config.max_random_start, use_cpu=True)
+      worker = Worker(worker_id, global_network, global_optim, local_network, local_env)
 
     # Prepare each workers to run asynchronously
     workers = []

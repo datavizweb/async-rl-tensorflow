@@ -8,7 +8,7 @@ class DeepQNetwork(object):
                screen_height, screen_width,
                action_size, activation_fn=tf.nn.relu,
                initializer=tf.truncated_normal_initializer(0, 0.02), 
-               gamma=0.01, beta=0.0, name=None):
+               gamma=0.01, beta=0.0, global_network=None):
     self.sess = sess
 
     if data_format == 'NHWC':
@@ -62,6 +62,16 @@ class DeepQNetwork(object):
       self.value_loss = tf.pow(self.R - self.value, 2)
 
       self.total_loss = self.policy_loss + self.value_loss
+
+    if global_network != None:
+      with tf.variable_scope('copy_from_target'):
+        copy_ops = []
+
+        for name in self.w.keys():
+          copy_op = tf.assign(self.w[name], global_network.w[name])
+          copy_ops.append(copy_op)
+
+        self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
 
   def save_model(self, saver, checkpoint_dir, step=None):
     print(" [*] Saving checkpoints...")
