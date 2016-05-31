@@ -1,4 +1,5 @@
 import gym
+import time
 import random
 import logging
 from tqdm import tqdm
@@ -94,10 +95,12 @@ def main(_):
       idx = 0
       model.env.new_random_game()
 
+      start_time = time.time()
       for _ in xrange(1000):
         state, reward, terminal = model.env.step(-1, is_training=True)
         action = model.predict(state)
         idx += 1
+      logger.info("loop : %2.2f sec" % (time.time() - start_time))
 
     # Prepare each workers to run asynchronously
     workers = []
