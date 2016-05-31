@@ -2,6 +2,7 @@ import os
 import time
 import tensorflow as tf
 from logging import getLogger
+from six.moves import range
 
 logger = getLogger(__name__)
 

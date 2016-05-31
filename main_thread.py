@@ -6,7 +6,7 @@ from tqdm import tqdm
 import tensorflow as tf
 from threading import Thread
 
-from src.utils import timeit
+from src.utils import timeit, range
 from src.models import A3C_FF
 from src.network import Network
 from src.environment import Environment

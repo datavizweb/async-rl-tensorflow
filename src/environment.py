@@ -3,7 +3,7 @@ import random
 import logging
 import numpy as np
 
-from .utils import imresize
+from .utils import imresize, range
 
 logger = logging.getLogger(__name__)
 
