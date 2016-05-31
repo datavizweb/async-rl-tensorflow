@@ -68,6 +68,10 @@ class Environment(object):
     return self.history, 0, False
 
   def step(self, action, is_training):
+    if action == -1:
+      # Step with random action
+      action = self.env.action_space.sample()
+
     cumulated_reward = 0
 
     for _ in xrange(self.n_action_repeat):

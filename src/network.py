@@ -68,7 +68,7 @@ class Network(object):
         copy_ops = []
 
         for name in self.w.keys():
-          copy_op = tf.assign(self.w[name], global_network.w[name])
+          copy_op = self.w[name].assign(global_network.w[name])
           copy_ops.append(copy_op)
 
         self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
