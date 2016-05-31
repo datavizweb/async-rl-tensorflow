@@ -4,7 +4,6 @@ import random
 import logging
 from tqdm import tqdm
 import tensorflow as tf
-import multiprocessing as mp
 from threading import Thread
 
 from src.utils import timeit
@@ -78,7 +77,7 @@ def main(_):
 
     # prepare variables for each thread
     A3C_FFs = {}
-    for worker_id in xrange(config.n_worker):
+    for worker_id in range(config.n_worker):
       network = make_network(sess, global_network, name='A3C_%d' % worker_id)
       env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
                                     config.history_length, config.data_format, config.display,
@@ -96,7 +95,7 @@ def main(_):
       model.env.new_random_game()
 
       start_time = time.time()
-      for _ in xrange(1000):
+      for _ in range(1000):
         state, reward, terminal = model.env.step(-1, is_training=True)
         action = model.predict(state)
         idx += 1

@@ -1,4 +1,5 @@
 import tensorflow as tf
+from functools import reduce
 
 def conv2d(x,
            output_dim,

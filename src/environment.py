@@ -53,7 +53,7 @@ class Environment(object):
   def new_random_game(self):
     screen, reward, terminal = self.new_game(True)
 
-    for idx in xrange(random.randrange(self.max_random_start)):
+    for idx in range(random.randrange(self.max_random_start)):
       screen, reward, terminal, _ = self.env.step(0)
 
       if terminal: logger.warning("WARNING: Terminal signal received after %d 0-steps", idx)
@@ -74,7 +74,7 @@ class Environment(object):
 
     cumulated_reward = 0
 
-    for _ in xrange(self.n_action_repeat):
+    for _ in range(self.n_action_repeat):
       screen, reward, terminal, _ = self.env.step(action)
       cumulated_reward += reward
       current_lives = self.env.ale.lives()

@@ -5,7 +5,6 @@ import logging
 from tqdm import tqdm
 import tensorflow as tf
 import multiprocessing as mp
-from threading import Thread
 
 from src.utils import timeit
 from src.models import A3C_FF
@@ -93,7 +92,7 @@ def main(_):
       model.env.new_random_game()
 
       start_time = time.time()
-      for _ in xrange(1000):
+      for _ in range(1000):
         state, reward, terminal = model.env.step(-1, is_training=True)
         action = model.predict(state)
         idx += 1
