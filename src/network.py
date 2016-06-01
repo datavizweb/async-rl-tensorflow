@@ -75,20 +75,22 @@ class Network(object):
 
         self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
 
-      with tf.variable_scope('accumulate_gradients'):
-        accum_grads, reset_grads = [], []
-        grads = tf.gradients(self.total_loss, self.w.values())
-        #grads = tf.gradients(self.total_loss, [v.ref() for v in self.w.values()])
+      # Add accumulated gradient ops for n-step Q-learning
+      accum_grads, reset_grads = [], []
+      grads = tf.gradients(self.total_loss, self.w.values())
 
-        for grad, var in zip(grads, self.w.values()):
-          if grad != None:
-            shape = grad.get_shape().as_list()
+      for grad, (w_key, w_value) in zip(grads, self.w.items()):
+        if grad != None:
+          shape = grad.get_shape().as_list()
 
-            accum_grad = tf.Variable(
-                tf.zeros(shape), trainable=False, name='accum_%s' % var.name)
+          accum_grad = tf.Variable(
+              tf.zeros(shape), trainable=False, name='accum_%s' % w_key)
 
-            #accum_grads.append(tf.assign_add(accum_grad, grad))
-            #reset_grads.append(accum_grad.assign(tf.zeros(shape)))
+          accum_grads.append(tf.assign_add(accum_grad, grad))
+          reset_grads.append(accum_grad.assign(tf.zeros(shape)))
+
+      self.accum_grad = tf.group(*accum_grads)
+      self.reset_grad = tf.group(*reset_grads)
 
   def predict(self, s_t):
     return self.sess.run([

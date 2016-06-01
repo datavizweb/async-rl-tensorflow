@@ -26,6 +26,11 @@ class A3C_FF(object):
     self.screen_width = config.screen_width
     self.history_length = config.history_length
 
+    self.prev_policy_sampled_actions = {}
+    self.prev_policy_entropy = {}
+    self.prev_value = {}
+    self.prev_reward = {}
+
   def predict(self, s_t, test_ep=None):
     ep = test_ep or (self.ep_end +
         max(0., (self.ep_start - self.ep_end)
@@ -34,7 +39,7 @@ class A3C_FF(object):
     if random.random() < 0:
       action = random.randrange(self.env.action_size)
     else:
-      action = self.network.predict(expand(s_t))
+      log_policy_from_sampled_actions, policy_entropy, value = self.network.predict(expand(s_t))
 
     return action
 
@@ -43,3 +48,8 @@ class A3C_FF(object):
 
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
       pass
+
+      self.prev_policy_sampled_actions = {}
+      self.prev_policy_entropy = {}
+      self.prev_value = {}
+      self.prev_reward = {}
