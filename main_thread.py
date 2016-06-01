@@ -96,25 +96,17 @@ def main(_):
 
     tf.initialize_all_variables().run()
 
+    saver = tf.train.Saver(global_network.w.values() + [step_op], max_to_keep=10)
+    global_network.load_model(saver, checkpoint_dir)
+
     @timeit
     def worker_func(worker_id):
       model = A3C_FFs[worker_id]
-      state, reward, terminal = model.env.new_random_game()
-      model.observe(state, reward, terminal)
 
-      start_time = time.time()
-      for idx in range(100):
-        print worker_id, idx
-        # 1. predict
-        action = model.predict(state)
-        # 2. step
-        state, reward, terminal = model.env.step(-1, is_training=True)
-        # 3. observe
-        model.observe(state, reward, terminal)
-
-        if terminal:
-          model.env.new_random_game()
-      logger.info("loop : %2.2f sec" % (time.time() - start_time))
+      if worker_id == 0:
+        model.train_with_log()
+      else:
+        model.train(saver)
 
     # Prepare each workers to run asynchronously
     workers = []

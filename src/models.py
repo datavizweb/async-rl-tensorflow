@@ -36,22 +36,126 @@ class A3C_FF(object):
     self.screen_width = config.screen_width
     self.history_length = config.history_length
 
-    self.prev_p_logits = {} # np.empty([self.t_max, self.action_size], dtype=np.integer)
-    self.prev_s = {} # np.empty([self.t_max, 1], dtype=np.integer)
-    self.prev_v = {} # np.empty([self.t_max, 1], dtype=np.integer)
-    self.prev_r = {} # np.empty(self.t_max, dtype=np.integer)
-    self.prev_log_policy = {} # np.empty(self.t_max, dtype=np.integer)
-    self.prev_t = {} # np.empty(self.t_max, dtype=np.bool)
-
-    self.prev_log_policy_sampled = {}
-    self.prev_policy_entropy = {}
-    self.prev_value = {}
-    self.prev_reward = {}
+    self.prev_s = {}
+    self.prev_r = {}
+    self.prev_log_policy = {}
 
     self.s_t_shape = self.networks[0].s_t.get_shape().as_list()
     self.s_t_shape[0] = 1
 
     self.make_accumulated_gradients()
+
+    with tf.variable_scope('summary'):
+      scalar_summary_tags = ['average/reward', 'average/loss', 'average/q', \
+          'episode/max reward', 'episode/min reward', 'episode/avg reward', 'episode/num of game', 'training/learning_rate']
+
+      self.summary_placeholders = {}
+      self.summary_ops = {}
+
+      for tag in scalar_summary_tags:
+        self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
+        self.summary_ops[tag]  = tf.scalar_summary(tag, self.summary_placeholders[tag])
+
+      histogram_summary_tags = ['episode/rewards', 'episode/actions']
+
+      for tag in histogram_summary_tags:
+        self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
+        self.summary_ops[tag]  = tf.histogram_summary(tag, self.summary_placeholders[tag])
+
+      self.writer = tf.train.SummaryWriter('./logs/%s' % self.model_dir, self.sess.graph)
+
+  def train(self):
+    state, reward, terminal = self.env.new_random_game()
+    self.observe(state, reward, terminal)
+
+    while True:
+      # 1. predict
+      action = self.predict(state)
+      # 2. step
+      state, reward, terminal = self.env.step(-1, is_training=True)
+      # 3. observe
+      self.observe(state, reward, terminal)
+
+      if terminal:
+        self.env.new_random_game()
+
+  def train_with_log(self, saver):
+    start_time = time.time()
+
+    num_game, self.update_count, ep_reward = 0, 0, 0.
+    total_reward, self.total_loss, self.total_q = 0., 0., 0.
+    max_avg_ep_reward = 0
+    ep_rewards, actions = [], []
+
+    state, reward, terminal = self.env.new_random_game()
+    self.observe(state, reward, terminal)
+
+    for step in xrange(10000000):
+      if self.step == self.learn_start:
+        num_game, self.update_count, ep_reward = 0, 0, 0.
+        total_reward, self.total_loss, self.total_q = 0., 0., 0.
+        ep_rewards, actions = [], []
+
+      # 1. predict
+      action = self.predict(state)
+      # 2. step
+      state, reward, terminal = self.env.step(-1, is_training=True)
+      # 3. observe
+      self.observe(state, reward, terminal)
+
+      if terminal:
+        self.env.new_random_game()
+
+        num_game += 1
+        ep_rewards.append(ep_reward)
+        ep_reward = 0.
+      else:
+        ep_reward += reward
+
+      actions.append(action)
+      total_reward += reward
+
+      if self.step >= self.learn_start:
+        if self.step % self.test_step == self.test_step - 1:
+          avg_reward = total_reward / self.test_step
+          avg_loss = self.total_loss / self.update_count
+          avg_q = self.total_q / self.update_count
+
+          try:
+            max_ep_reward = np.max(ep_rewards)
+            min_ep_reward = np.min(ep_rewards)
+            avg_ep_reward = np.mean(ep_rewards)
+          except:
+            max_ep_reward, min_ep_reward, avg_ep_reward = 0, 0, 0
+
+          print '\navg_r: %.4f, avg_l: %.6f, avg_q: %3.6f, avg_ep_r: %.4f, max_ep_r: %.4f, min_ep_r: %.4f, # game: %d' \
+              % (avg_reward, avg_loss, avg_q, avg_ep_reward, max_ep_reward, min_ep_reward, num_game)
+
+          if max_avg_ep_reward * 0.9 <= avg_ep_reward:
+            self.step_assign_op.eval({self.step_input: self.step + 1})
+            self.global_network.save_model(self.step + 1)
+
+            max_avg_ep_reward = max(max_avg_ep_reward, avg_ep_reward)
+
+          if self.step > 180:
+            self.inject_summary({
+                'average/reward': avg_reward,
+                'average/loss': avg_loss,
+                'average/q': avg_q,
+                'episode/max reward': max_ep_reward,
+                'episode/min reward': min_ep_reward,
+                'episode/avg reward': avg_ep_reward,
+                'episode/num of game': num_game,
+                'episode/rewards': ep_rewards,
+                'episode/actions': actions,
+                'training/learning_rate': self.learning_rate_op.eval({self.learning_rate_step: self.step}),
+              }, self.step)
+
+          num_game = 0
+          total_reward = 0.
+          ep_reward = 0.
+          ep_rewards = []
+          actions = []
 
   # Add accumulated gradient ops for n-step Q-learning
   def make_accumulated_gradients(self):
@@ -149,10 +253,7 @@ class A3C_FF(object):
     self.prev_r[self.t] = r_t
     self.prev_s[self.t] = s_t
 
-    self.prev_value[self.t] = r_t
-
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
-      print terminal
       r = {}
 
       if terminal:
@@ -175,16 +276,27 @@ class A3C_FF(object):
           [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
 
+      # 1. Update accumulated gradients
       self.sess.partial_run(self.partial_graph,
           [self.add_accum_grads[t] for t in range(len(self.prev_r) - 1)], data)
 
-      # Reset accumulated gradients to zero
+      # 2. Update global w with accumulated gradients
+      self.sess.run(self.apply_gradient)
+
+      # 3. Reset accumulated gradients to zero
       self.sess.run(self.reset_accum_grad)
 
-      # Copy w of global_network tot local_network
-      #self.copy_from_global()
+      # 4. Copy w of global_network tot local_network
+      self.sess.run(self.networks[0].global_copy_op)
 
       self.prev_s = {self.t: self.prev_s[self.t]}
       self.prev_r = {self.t: self.prev_r[self.t]}
 
       self.t_start = self.t
+
+  def inject_summary(self, tag_dict, step):
+    summary_str_lists = self.sess.run([self.summary_ops[tag] for tag in tag_dict.keys()], {
+      self.summary_placeholders[tag]: value for tag, value in tag_dict.items()
+    })
+    for summary_str in summary_str_lists:
+      self.writer.add_summary(summary_str, self.step)
