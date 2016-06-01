@@ -1,7 +1,9 @@
+import re
 import gym
 import time
 import random
 import logging
+import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from threading import Thread
@@ -56,8 +58,12 @@ logger.setLevel(config.log_level)
 tf.set_random_seed(config.random_seed)
 random.seed(config.random_seed)
 
-def accumulate_gradients(tower_grads):
-  accumulate_grads = []
+def accumulate_gradients(tower_grads, global_network):
+  accum_grads_and_vars = []
+
+  global_var = {w.name.replace('A3C_global/', ''): w for w in global_network.w.values()}
+  grad_lists = []
+
   for grad_and_vars in zip(*tower_grads):
     grads = []
     for g, var in grad_and_vars:
@@ -68,13 +74,18 @@ def accumulate_gradients(tower_grads):
         continue
 
     if grads:
+      grad_lists.append(grads)
+
       grad = tf.concat(0, grads)
       grad = tf.reduce_sum(grad, 0)
 
       v = grad_and_vars[0][1]
-      grad_and_var = (grad, v)
-      accumulate_grads.append(grad_and_var)
-  return accumulate_grads
+      global_v = global_var[re.sub(r'.*\/A3C_\d+\/', '', v.name)]
+      grad_and_var = (grad, global_v)
+
+      accum_grads_and_vars.append(grad_and_var)
+
+  return accum_grads_and_vars, zip(*grad_lists)
 
 def main(_):
   with tf.Session() as sess:
@@ -112,12 +123,9 @@ def main(_):
           grads.append(grad)
 
       # Accumulate gradients for n-steps
-      apply_gradeint = {}
-      for step in xrange(1, config.t_max + 1):
-        accumulated_grads = accumulate_gradients(grads[:step])
-
-        apply_gradeint[step] = \
-            global_optim.apply_gradients(accumulated_grads)
+      accum_grads_and_vars, grads_per_step = accumulate_gradients(grads, global_network)
+      apply_gradeint = global_optim.apply_gradients(accum_grads_and_vars)
+      import ipdb; ipdb.set_trace()
 
       env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
                                     config.history_length, config.data_format, config.display,

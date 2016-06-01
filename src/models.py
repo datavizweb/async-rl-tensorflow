@@ -40,6 +40,14 @@ class A3C_FF(object):
     self.prev_value = {}
     self.prev_reward = {}
 
+    partial_run = {}
+    import ipdb; ipdb.set_trace() 
+    for key in self.apply_gradeint.keys():
+      targets = [self.networks[t].pred_action for t in range(key)]
+
+      partial_run[key] = sess.partial_run_setup(
+          targets + [self.apply_gradeint[key]], [x])
+
   def predict(self, s_t, test_ep=None):
     ep = test_ep or (self.ep_end +
         max(0., (self.ep_start - self.ep_end)
