@@ -64,11 +64,11 @@ def accumulate_gradients(tower_grads, global_network):
   global_var = {w.name.replace('A3C_global/', ''): w for w in global_network.w.values()}
   grad_lists = []
 
-  for grad_and_vars in zip(*tower_grads):
+  for grad_idx, grad_and_vars in enumerate(zip(*tower_grads)):
     grads = []
-    for g, var in grad_and_vars:
+    for tower_idx, (g, var) in enumerate(grad_and_vars):
       if g is not None:
-        expanded_g = tf.expand_dims(g, 0)
+        expanded_g = tf.expand_dims(g, 0, name='grad_%d_%d' % (tower_idx, grad_idx))
         grads.append(expanded_g)
       else:
         continue
@@ -114,7 +114,7 @@ def main(_):
         networks, grads = [], []
 
         for step in range(config.t_max):
-          network = make_network(sess, global_network, global_optim, name='A3C_%d' % worker_id)
+          network = make_network(sess, global_network, global_optim, name='A3C_%d' % (worker_id))
           networks.append(network)
 
           tf.get_variable_scope().reuse_variables()
@@ -126,11 +126,15 @@ def main(_):
       accum_grads_and_vars, grads_per_step = accumulate_gradients(grads, global_network)
       apply_gradeint = global_optim.apply_gradients(accum_grads_and_vars)
 
-      env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
-                                    config.history_length, config.data_format, config.display,
-                                    config.screen_height, config.screen_width)
+      # Add dummy_op to execute optimizer with partial_run
+      with tf.control_dependencies([apply_gradeint]):
+        fake_apply_gradient = tf.constant(0)
 
-      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, env, apply_gradeint, config)
+      env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
+                        config.history_length, config.data_format, config.display,
+                        config.screen_height, config.screen_width)
+
+      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, env, fake_apply_gradient, grads_per_step, config)
 
     tf.initialize_all_variables().run()
 
@@ -138,6 +142,7 @@ def main(_):
     def worker_func(worker_id):
       model = A3C_FFs[worker_id]
       state, reward, terminal = model.env.new_random_game()
+      model.observe(state, reward, terminal)
 
       start_time = time.time()
       for idx in range(100):

@@ -118,18 +118,20 @@ class A3C_FF(object):
         self.networks[t].true_log_policy:
           [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
-      data.update({
-        grad: np.zeros(grad.get_shape().as_list()) \
-            for t in range(self.t_max - 1, len(self.prev_r) - 1, -1) for grad in self.grads_per_step[t]
-      })
+      # /usr/local/lib/python2.7/dist-packages/tensorflow/python/client/session.pya#L473
       #data.update({
       #  self.networks[t].s_t:
       #    np.zeros(self.s_t_shape) for t in range(self.t_max - 1, len(self.prev_r) - 1, -1)
       #})
+      data.update({
+        grad: np.zeros(grad.get_shape().as_list()) \
+            for t in range(self.t_max - 1, len(self.prev_r) - 1, -1) for grad in self.grads_per_step[t][-1:]
+      })
 
       try:
         self.sess.partial_run(self.partial_graph, self.apply_gradient, data)
-      except:
+      except Exception as e:
+        print e
         import ipdb; ipdb.set_trace() 
       #self.copy_from_global()
 
