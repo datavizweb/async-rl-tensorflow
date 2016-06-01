@@ -1,3 +1,4 @@
+
 import os
 import tensorflow as tf
 
@@ -8,7 +9,7 @@ class Network(object):
                screen_height, screen_width,
                action_size, activation_fn=tf.nn.relu,
                initializer=tf.truncated_normal_initializer(0, 0.02), 
-               gamma=0.01, beta=0.0, global_network=None):
+               gamma=0.01, beta=0.0, global_network=None, global_optim=None):
     self.sess = sess
 
     if data_format == 'NHWC':
@@ -40,12 +41,15 @@ class Network(object):
 
       self.policy = tf.nn.softmax(self.policy_logits, name='pi')
       self.log_policy = tf.log(tf.nn.softmax(self.policy_logits))
-      self.entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
+      self.policy_entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
+      _ = tf.scalar_summary('policy/entropy', self.policy_entropy)
 
       self.pred_action = tf.argmax(self.policy, dimension=1)
 
-      self.sampled_actions = batch_sample(self.policy)
-      self.log_policy_from_sampled_actions = tf.gather(self.log_policy, self.sampled_actions)
+      self.sampled_action = batch_sample(self.policy)
+      sampled_action_one_hot = tf.one_hot(self.sampled_action, action_size, 1., 0.)
+
+      self.log_policy_of_sampled_action = tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
 
     with tf.variable_scope('value'):
       # 512 -> 1
@@ -54,24 +58,27 @@ class Network(object):
     with tf.variable_scope('optim'):
       self.R = tf.placeholder('float32', [None], name='target_reward')
 
-      self.true_action = tf.placeholder('int64', [None], name='true_action')
-      action_one_hot = tf.one_hot(self.true_action, action_size, 1.0, 0.0, name='action_one_hot')
+      self.true_log_policy = tf.placeholder('float32', [None], name='true_action')
 
-      self.policy_loss = tf.reduce_sum(self.log_policy * action_one_hot, 1) \
-          * (self.R - self.value + beta * self.entropy)
+      # TODO: equation on paper and codes of other implementations are different
+      self.policy_loss = self.true_log_policy \
+          * (self.R - self.value + beta * self.policy_entropy)
       self.value_loss = tf.pow(self.R - self.value, 2)
 
       self.total_loss = self.policy_loss + self.value_loss
 
-    #if global_network != None:
-    #  with tf.variable_scope('copy_from_target'):
-    #    copy_ops = []
+    if global_network != None:
+      with tf.variable_scope('copy_from_target'):
+        copy_ops = []
 
-    #    for name in self.w.keys():
-    #      copy_op = self.w[name].assign(global_network.w[name])
-    #      copy_ops.append(copy_op)
+        for name in self.w.keys():
+          copy_op = self.w[name].assign(global_network.w[name])
+          copy_ops.append(copy_op)
 
-    #    self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
+        self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
+
+      # Add accumulated gradient ops for n-step Q-learning
+      accum_grads, accum_grad_adds, reset_grads = [], [], []
 
   def save_model(self, saver, checkpoint_dir, step=None):
     print(" [*] Saving checkpoints...")

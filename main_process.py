@@ -2,12 +2,12 @@ import gym
 import time
 import random
 import logging
+import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 import multiprocessing as mp
-from threading import Thread
 
-from src.utils import timeit
+from src.utils import timeit, range
 from src.models import A3C_FF
 from src.network import Network
 from src.environment import Environment
@@ -59,14 +59,16 @@ random.seed(config.random_seed)
 
 def main(_):
   action_size = gym.make(config.env_name).action_space.n
-  def make_network(sess, global_network=None, name=None):
+
+  def make_network(sess, global_network=None, global_optim=None, name=None):
     with tf.variable_scope(name) as scope:
       return Network(sess, config.data_format,
               config.history_length,
               config.screen_height,
               config.screen_width,
               action_size,
-              global_network=global_network)
+              global_network=global_network,
+              global_optim=global_optim)
 
   server = tf.train.Server.create_local_server()
 
@@ -76,27 +78,42 @@ def main(_):
                                             config.decay,
                                             config.momentum,
                                             config.epsilon)
+
   tf.initialize_all_variables().run(session=main_sess)
 
   @timeit
   def worker_func(worker_id):
     with tf.Session(server.target) as sess:
-      network = make_network(sess, global_network, name='A3C_%d' % worker_id)
-      env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
-                                    config.history_length, config.data_format, config.display,
-                                    config.screen_height, config.screen_width)
+      with tf.variable_scope('thread%d' % worker_id) as scope:
+        networks, grads = [], []
 
-      model = A3C_FF(worker_id, global_network, global_optim, network, env, config)
+        for step in range(config.t_max):
+          network = make_network(sess, global_network, global_optim, name='A3C_%d' % (worker_id))
+          networks.append(network)
+
+          tf.get_variable_scope().reuse_variables()
+
+      env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
+                        config.history_length, config.data_format, config.display,
+                        config.screen_height, config.screen_width)
+      model = A3C_FF(worker_id, sess, networks, env, global_network, global_optim, config)
       tf.initialize_all_variables().run(session=sess)
 
-      idx = 0
-      model.env.new_random_game()
+      state, reward, terminal = model.env.new_random_game()
+      model.observe(state, reward, terminal)
 
       start_time = time.time()
-      for _ in xrange(1000):
-        state, reward, terminal = model.env.step(-1, is_training=True)
+      for idx in range(100):
+        print worker_id, idx
+        # 1. predict
         action = model.predict(state)
-        idx += 1
+        # 2. step
+        state, reward, terminal = model.env.step(-1, is_training=True)
+        # 3. observe
+        model.observe(state, reward, terminal)
+
+        if terminal:
+          model.env.new_random_game()
       logger.info("loop : %2.2f sec" % (time.time() - start_time))
 
   # Prepare each workers to run asynchronously
