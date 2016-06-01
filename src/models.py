@@ -1,14 +1,17 @@
 import random
 import numpy as np
 
+from .utils import range
+
 expand = lambda s_t: np.expand_dims(s_t, 0)
 
 class A3C_FF(object):
-  def __init__(self, worker_id, sess, local_networks, local_env, apply_gradient, config):
+  def __init__(self, worker_id, sess, local_networks, local_env, apply_gradient, grads_per_step, config):
     self.sess = sess
     self.env = local_env
     self.networks = local_networks
     self.apply_gradient = apply_gradient
+    self.grads_per_step = grads_per_step # used to zero out after-terminal gradients
 
     self.t = 0
     self.t_start = 0
@@ -32,7 +35,7 @@ class A3C_FF(object):
     self.prev_s = {} # np.empty([self.t_max, 1], dtype=np.integer)
     self.prev_v = {} # np.empty([self.t_max, 1], dtype=np.integer)
     self.prev_r = {} # np.empty(self.t_max, dtype=np.integer)
-    self.prev_a = {} # np.empty(self.t_max, dtype=np.integer)
+    self.prev_log_policy = {} # np.empty(self.t_max, dtype=np.integer)
     self.prev_t = {} # np.empty(self.t_max, dtype=np.bool)
 
     self.prev_log_policy_sampled = {}
@@ -40,14 +43,18 @@ class A3C_FF(object):
     self.prev_value = {}
     self.prev_reward = {}
 
+    self.s_t_shape = self.networks[0].s_t.get_shape().as_list()
+    self.s_t_shape[0] = 1
+
   def reset_partial_graph(self):
-    targets = [network.pred_action for network in self.networks]
+    targets = [network.sampled_action for network in self.networks]
+    targets.extend([network.log_policy_of_sampled_action for network in self.networks])
     targets.extend([network.value for network in self.networks])
     targets.append(self.apply_gradient)
 
     inputs = [network.s_t for network in self.networks]
     inputs.extend([network.R for network in self.networks])
-    inputs.extend([network.true_action for network in self.networks])
+    inputs.extend([network.true_log_policy for network in self.networks])
 
     self.partial_graph = self.sess.partial_run_setup(targets, inputs)
 
@@ -62,15 +69,21 @@ class A3C_FF(object):
     if random.random() < 0:
       action = random.randrange(self.env.action_size)
     else:
-      action = self.sess.partial_run(
+      network_idx = self.t - self.t_start
+      action, log_policy = self.sess.partial_run(
           self.partial_graph,
-          self.networks[self.t_start - self.t].pred_action,
+          [
+            self.networks[network_idx].sampled_action,
+            self.networks[network_idx].log_policy_of_sampled_action,
+          ],
           {
-            self.networks[self.t_start - self.t].s_t: [s_t]
+            self.networks[network_idx].s_t: [s_t]
           }
-      )[0]
+      )
+      action, log_policy = action[0], log_policy[0]
 
-    self.prev_a[self.t] = action
+    self.prev_log_policy[self.t] = action
+    self.t += 1
 
     return action
 
@@ -82,7 +95,8 @@ class A3C_FF(object):
 
     self.prev_value[self.t] = r_t
 
-    if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max - 1:
+    if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
+      print terminal
       r = {}
 
       if terminal:
@@ -93,25 +107,33 @@ class A3C_FF(object):
             self.networks[self.t_start - self.t].value,
         )[0][0]
 
-      import ipdb; ipdb.set_trace() 
-      for t in xrange(self.t - 1, self.t_start - 1, -1):
-        r[t] = self.prev_r[t + 1] + self.gamma * r[t + 1]
+      for t in range(self.t - 1, self.t_start - 1, -1):
+        r[t] = self.prev_r[t] + self.gamma * r[t + 1]
 
       data = {}
       data.update({
-        self.networks[t].R: [r[t + self.t_start]] for t in xrange(len(self.prev_r) - 1)})
+        self.networks[t].R: [r[t + self.t_start]] for t in range(len(self.prev_r) - 1)
+      })
       data.update({
-        self.networks[t].s_t: [self.prev_s[t + self.t_start]] for t in xrange(len(self.prev_r) - 1)})
+        self.networks[t].true_log_policy:
+          [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
+      })
       data.update({
-        self.networks[t].true_action : [self.prev_a[t + self.t_start]] for t in xrange(len(self.prev_r) - 1)})
+        grad: np.zeros(grad.get_shape().as_list()) \
+            for t in range(self.t_max - 1, len(self.prev_r) - 1, -1) for grad in self.grads_per_step[t]
+      })
+      #data.update({
+      #  self.networks[t].s_t:
+      #    np.zeros(self.s_t_shape) for t in range(self.t_max - 1, len(self.prev_r) - 1, -1)
+      #})
 
-      self.sess.run(self.apply_gradient[len(self.prev_r) - 1], feed_dict=data)
-
+      try:
+        self.sess.partial_run(self.partial_graph, self.apply_gradient, data)
+      except:
+        import ipdb; ipdb.set_trace() 
       #self.copy_from_global()
 
-      self.prev_a = {self.t: self.prev_a[self.t]}
       self.prev_s = {self.t: self.prev_s[self.t]}
       self.prev_r = {self.t: self.prev_r[self.t]}
-      self.t_start = self.t
 
-    self.t += 1
+      self.t_start = self.t

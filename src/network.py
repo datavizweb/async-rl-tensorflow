@@ -45,10 +45,10 @@ class Network(object):
 
       self.pred_action = tf.argmax(self.policy, dimension=1)
 
-      self.sampled_actions = batch_sample(self.policy)
-      sampled_action_one_hot = tf.one_hot(self.sampled_actions, action_size, 1., 0.)
+      self.sampled_action = batch_sample(self.policy)
+      sampled_action_one_hot = tf.one_hot(self.sampled_action, action_size, 1., 0.)
 
-      self.log_policy_from_sampled_actions = tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
+      self.log_policy_of_sampled_action = tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
 
     with tf.variable_scope('value'):
       # 512 -> 1
@@ -57,10 +57,10 @@ class Network(object):
     with tf.variable_scope('optim'):
       self.R = tf.placeholder('float32', [None], name='target_reward')
 
-      self.true_action = tf.placeholder('int64', [None], name='true_action')
-      action_one_hot = tf.one_hot(self.true_action, action_size, 1., 0., name='action_one_hot')
+      self.true_log_policy = tf.placeholder('float32', [None], name='true_action')
 
-      self.policy_loss = tf.reduce_sum(self.log_policy * action_one_hot, 1) \
+      # TODO: equation on paper and codes of other implementations are different
+      self.policy_loss = self.true_log_policy \
           * (self.R - self.value + beta * self.policy_entropy)
       self.value_loss = tf.pow(self.R - self.value, 2)
 
@@ -75,45 +75,6 @@ class Network(object):
           copy_ops.append(copy_op)
 
         self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
-
-      # Add accumulated gradient ops for n-step Q-learning
-      #accum_grads, accum_grad_adds, reset_grads = [], [], []
-      #grads_and_vars = global_optim.compute_gradients(self.total_loss, self.w.values())
-      #new_grads_and_vars = []
-      #
-      #for grad, var in tuple(grads_and_vars):
-      #  if grad is not None:
-      #    shape = grad.get_shape().as_list()
-
-      #    name = "/".join('accum_%s' % var.name.split(':')[0].split('/')[-2:])
-      #    accum_grad = tf.Variable(
-      #        tf.zeros(shape), trainable=False, name=name)
-
-      #    accum_grad_adds.append(tf.assign_add(accum_grad, grad))
-      #    reset_grads.append(accum_grad.assign(tf.zeros(shape)))
-      #    new_grads_and_vars.append((accum_grad, var))
-
-      #self.accum_grad_add = tf.group(*accum_grad_adds)
-      #self.reset_grad = tf.group(*reset_grads)
-
-      #import ipdb; ipdb.set_trace() 
-      #self.apply_grad = global_optim.apply_gradients(new_grads_and_vars)
-
-  def predict(self, s_t):
-    return self.pred_action.eval({self.s_t: s_t}, session=self.sess)
-    #return self.sess.run([
-    #    self.log_policy_from_sampled_actions,
-    #    self.policy_entropy,
-    #    self.value
-    #  ], feed_dict={self.s_t: s_t})
-
-  def calc_value(self, s_t):
-    return self.value.eval({self.s_t: s_t}, session=self.sess)
-
-  def update(self, s_t):
-    return self.sess.run([
-        self.accum_grad,
-      ], feed_dict={self.s_t: s_t})
 
   def save_model(self, saver, checkpoint_dir, step=None):
     print(" [*] Saving checkpoints...")
