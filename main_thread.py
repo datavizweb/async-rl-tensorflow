@@ -56,26 +56,6 @@ logger.setLevel(config.log_level)
 tf.set_random_seed(config.random_seed)
 random.seed(config.random_seed)
 
-def accumulate_gradients(tower_grads):
-  accumulate_grads = []
-  for grad_and_vars in zip(*tower_grads):
-    grads = []
-    for g, var in grad_and_vars:
-      if g is not None:
-        expanded_g = tf.expand_dims(g, 0)
-        grads.append(expanded_g)
-      else:
-        continue
-
-    if grads:
-      grad = tf.concat(0, grads)
-      grad = tf.reduce_sum(grad, 0)
-
-      v = grad_and_vars[0][1]
-      grad_and_var = (grad, v)
-      accumulate_grads.append(grad_and_var)
-  return accumulate_grads
-
 def main(_):
   with tf.Session() as sess:
     action_size = gym.make(config.env_name).action_space.n
@@ -99,31 +79,12 @@ def main(_):
     # prepare variables for each thread
     A3C_FFs = {}
     for worker_id in range(config.n_worker):
-      with tf.variable_scope('thread%d' % worker_id) as scope:
-        networks, grads = [], []
-
-        for step in range(config.t_max):
-          network = make_network(sess, global_network, global_optim, name='A3C_%d' % worker_id)
-          networks.append(network)
-
-          tf.get_variable_scope().reuse_variables()
-
-          grad = global_optim.compute_gradients(network.total_loss)
-          grads.append(grad)
-
-      # Accumulate gradients for n-steps
-      apply_gradeint = {}
-      for step in xrange(1, config.t_max + 1):
-        accumulated_grads = accumulate_gradients(grads[:step])
-
-        apply_gradeint[step] = \
-            global_optim.apply_gradients(accumulated_grads)
-
+      network = make_network(sess, global_network, global_optim, name='A3C_%d' % worker_id)
       env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
                                     config.history_length, config.data_format, config.display,
                                     config.screen_height, config.screen_width)
 
-      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, env, apply_gradeint, config)
+      A3C_FFs[worker_id] = A3C_FF(worker_id, network, env, config)
 
     tf.initialize_all_variables().run()
 
@@ -133,8 +94,7 @@ def main(_):
       state, reward, terminal = model.env.new_random_game()
 
       start_time = time.time()
-      for idx in range(100):
-        print worker_id, idx
+      for _ in range(3000):
         # 1. predict
         action = model.predict(state)
         # 2. step

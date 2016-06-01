@@ -100,15 +100,11 @@ class Network(object):
       #self.apply_grad = global_optim.apply_gradients(new_grads_and_vars)
 
   def predict(self, s_t):
-    return self.pred_action.eval({self.s_t: s_t}, session=self.sess)
-    #return self.sess.run([
-    #    self.log_policy_from_sampled_actions,
-    #    self.policy_entropy,
-    #    self.value
-    #  ], feed_dict={self.s_t: s_t})
-
-  def calc_value(self, s_t):
-    return self.value.eval({self.s_t: s_t}, session=self.sess)
+    return self.sess.run([
+        self.log_policy_from_sampled_actions,
+        self.policy_entropy,
+        self.value
+      ], feed_dict={self.s_t: s_t})
 
   def update(self, s_t):
     return self.sess.run([
