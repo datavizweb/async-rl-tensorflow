@@ -26,7 +26,7 @@ class A3C_FF(object):
     self.screen_width = config.screen_width
     self.history_length = config.history_length
 
-    self.prev_policy_sampled_actions = {}
+    self.prev_log_policy_sampled = {}
     self.prev_policy_entropy = {}
     self.prev_value = {}
     self.prev_reward = {}
@@ -39,17 +39,35 @@ class A3C_FF(object):
     if random.random() < 0:
       action = random.randrange(self.env.action_size)
     else:
-      log_policy_from_sampled_actions, policy_entropy, value = self.network.predict(expand(s_t))
+      policy_from_sampled_actions, policy_entropy, value = self.network.predict(expand(s_t))
+
+      self.prev_log_policy_sampled[self.t] = log_policy_from_sampled_actions
+      self.prev_policy_entropy[self.t] = policy_entropy
+      self.prev_value[self.t] = value
 
     return action
 
   def observe(self, s_t, r_t, terminal):
     r_t = max(self.min_reward, min(self.max_reward, r_t))
 
-    if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
-      pass
+    self.prev_value[self.t] = r_t
 
-      self.prev_policy_sampled_actions = {}
+    if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
+      r = {}
+
+      if terminal:
+        r[self.t] = 0.
+      else:
+        r[self.t] = self.networks[0].calc_value([s_t])[0][0]
+
+      for t in xrange(self.t - 1, self.t_start - 1, -1):
+        r[t] = self.prev_r[t + 1] + self.gamma * r[t + 1]
+
+        self.model.update()
+
+      self.prev_log_policy_sampled = {}
       self.prev_policy_entropy = {}
       self.prev_value = {}
       self.prev_reward = {}
+
+    self.t += 1

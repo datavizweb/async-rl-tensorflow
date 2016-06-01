@@ -41,6 +41,7 @@ class Network(object):
       self.policy = tf.nn.softmax(self.policy_logits, name='pi')
       self.log_policy = tf.log(tf.nn.softmax(self.policy_logits))
       self.policy_entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
+      _ = tf.scalar_summary('policy/entropy', self.policy_entropy)
 
       self.pred_action = tf.argmax(self.policy, dimension=1)
 
@@ -76,27 +77,38 @@ class Network(object):
         self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
 
       # Add accumulated gradient ops for n-step Q-learning
-      accum_grads, reset_grads = [], []
-      grads = tf.gradients(self.total_loss, self.w.values())
+      #accum_grads, accum_grad_adds, reset_grads = [], [], []
+      #grads_and_vars = global_optim.compute_gradients(self.total_loss, self.w.values())
+      #new_grads_and_vars = []
+      #
+      #for grad, var in tuple(grads_and_vars):
+      #  if grad is not None:
+      #    shape = grad.get_shape().as_list()
 
-      for grad, (w_key, w_value) in zip(grads, self.w.items()):
-        if grad != None:
-          shape = grad.get_shape().as_list()
+      #    name = "/".join('accum_%s' % var.name.split(':')[0].split('/')[-2:])
+      #    accum_grad = tf.Variable(
+      #        tf.zeros(shape), trainable=False, name=name)
 
-          accum_grad = tf.Variable(
-              tf.zeros(shape), trainable=False, name='accum_%s' % w_key)
+      #    accum_grad_adds.append(tf.assign_add(accum_grad, grad))
+      #    reset_grads.append(accum_grad.assign(tf.zeros(shape)))
+      #    new_grads_and_vars.append((accum_grad, var))
 
-          accum_grads.append(tf.assign_add(accum_grad, grad))
-          reset_grads.append(accum_grad.assign(tf.zeros(shape)))
+      #self.accum_grad_add = tf.group(*accum_grad_adds)
+      #self.reset_grad = tf.group(*reset_grads)
 
-      self.accum_grad = tf.group(*accum_grads)
-      self.reset_grad = tf.group(*reset_grads)
+      #import ipdb; ipdb.set_trace() 
+      #self.apply_grad = global_optim.apply_gradients(new_grads_and_vars)
 
   def predict(self, s_t):
     return self.sess.run([
         self.log_policy_from_sampled_actions,
         self.policy_entropy,
         self.value
+      ], feed_dict={self.s_t: s_t})
+
+  def update(self, s_t):
+    return self.sess.run([
+        self.accum_grad,
       ], feed_dict={self.s_t: s_t})
 
   def save_model(self, saver, checkpoint_dir, step=None):
