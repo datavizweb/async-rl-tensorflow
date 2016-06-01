@@ -1,17 +1,22 @@
+import re
 import random
 import numpy as np
+import tensorflow as tf
 
 from .utils import range
 
 expand = lambda s_t: np.expand_dims(s_t, 0)
 
 class A3C_FF(object):
-  def __init__(self, worker_id, sess, local_networks, local_env, apply_gradient, grads_per_step, config):
+  def __init__(self, worker_id, sess, local_networks, local_env,
+               global_network, global_optim, config):
     self.sess = sess
+
     self.env = local_env
     self.networks = local_networks
-    self.apply_gradient = apply_gradient
-    self.grads_per_step = grads_per_step # used to zero out after-terminal gradients
+
+    self.global_network = global_network
+    self.global_optim = global_optim
 
     self.t = 0
     self.t_start = 0
@@ -46,11 +51,62 @@ class A3C_FF(object):
     self.s_t_shape = self.networks[0].s_t.get_shape().as_list()
     self.s_t_shape[0] = 1
 
+    self.make_accumulated_gradients()
+
+  # Add accumulated gradient ops for n-step Q-learning
+  def make_accumulated_gradients(self):
+    global_var = {w.name.replace('A3C_global/', ''):w for w in self.global_network.w.values()}
+
+    reset_accum_grads = []
+    new_grads_and_vars = []
+
+    # 1. accum_grads
+    self.accum_grads = {}
+    self.add_accum_grads = {}
+
+    for step, network in enumerate(self.networks):
+      grads_and_vars = self.global_optim.compute_gradients(network.total_loss, network.w.values())
+      _add_accum_grads = []
+
+      for grad, var in tuple(grads_and_vars):
+        if grad is not None:
+          shape = grad.get_shape().as_list()
+
+          name = 'accum/%s' % "/".join(var.name.split(':')[0].split('/')[-3:])
+          if step == 0:
+            self.accum_grads[name] = tf.Variable(
+                tf.zeros(shape), trainable=False, name=name)
+
+            global_v = global_var[re.sub(r'.*\/A3C_\d+\/', '', var.name)]
+            new_grads_and_vars.append((self.accum_grads[name].ref(), global_v))
+
+            reset_accum_grads.append(self.accum_grads[name].assign(tf.zeros(shape)))
+
+          _add_accum_grads.append(tf.assign_add(self.accum_grads[name], grad))
+
+      # 2. Add gradient to accum_grads
+      self.add_accum_grads[step] = tf.group(*_add_accum_grads)
+
+    # 3. Reset accum_grads
+    self.reset_accum_grad = tf.group(*reset_accum_grads)
+
+    # 4. Update variables of global_network with accum_grads
+    self.apply_gradient = self.global_optim.apply_gradients(new_grads_and_vars)
+
+    for step, add_accum_grads in self.add_accum_grads.items():
+      with tf.control_dependencies([add_accum_grads]):
+        self.add_accum_grads[step] = tf.constant(0)
+
+    # Add dummy_op to execute optimizer with partial_run
+    with tf.control_dependencies([self.apply_gradient]):
+      self.fake_apply_gradient = tf.constant(0)
+
   def reset_partial_graph(self):
     targets = [network.sampled_action for network in self.networks]
     targets.extend([network.log_policy_of_sampled_action for network in self.networks])
     targets.extend([network.value for network in self.networks])
-    targets.append(self.apply_gradient)
+    targets.extend(self.add_accum_grads.values())
+    targets.append(self.fake_apply_gradient)
 
     inputs = [network.s_t for network in self.networks]
     inputs.extend([network.R for network in self.networks])
@@ -118,21 +174,14 @@ class A3C_FF(object):
         self.networks[t].true_log_policy:
           [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
-      # /usr/local/lib/python2.7/dist-packages/tensorflow/python/client/session.pya#L473
-      #data.update({
-      #  self.networks[t].s_t:
-      #    np.zeros(self.s_t_shape) for t in range(self.t_max - 1, len(self.prev_r) - 1, -1)
-      #})
-      data.update({
-        grad: np.zeros(grad.get_shape().as_list()) \
-            for t in range(self.t_max - 1, len(self.prev_r) - 1, -1) for grad in self.grads_per_step[t][-1:]
-      })
 
-      try:
-        self.sess.partial_run(self.partial_graph, self.apply_gradient, data)
-      except Exception as e:
-        print e
-        import ipdb; ipdb.set_trace() 
+      self.sess.partial_run(self.partial_graph,
+          [self.add_accum_grads[t] for t in range(len(self.prev_r) - 1)], data)
+
+      # Reset accumulated gradients to zero
+      self.sess.run(self.reset_accum_grad)
+
+      # Copy w of global_network tot local_network
       #self.copy_from_global()
 
       self.prev_s = {self.t: self.prev_s[self.t]}

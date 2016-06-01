@@ -1,4 +1,3 @@
-import re
 import gym
 import time
 import random
@@ -58,35 +57,6 @@ logger.setLevel(config.log_level)
 tf.set_random_seed(config.random_seed)
 random.seed(config.random_seed)
 
-def accumulate_gradients(tower_grads, global_network):
-  accum_grads_and_vars = []
-
-  global_var = {w.name.replace('A3C_global/', ''): w for w in global_network.w.values()}
-  grad_lists = []
-
-  for grad_idx, grad_and_vars in enumerate(zip(*tower_grads)):
-    grads = []
-    for tower_idx, (g, var) in enumerate(grad_and_vars):
-      if g is not None:
-        expanded_g = tf.expand_dims(g, 0, name='grad_%d_%d' % (tower_idx, grad_idx))
-        grads.append(expanded_g)
-      else:
-        continue
-
-    if grads:
-      grad_lists.append(grads)
-
-      grad = tf.concat(0, grads)
-      grad = tf.reduce_sum(grad, 0)
-
-      v = grad_and_vars[0][1]
-      global_v = global_var[re.sub(r'.*\/A3C_\d+\/', '', v.name)]
-      grad_and_var = (grad, global_v)
-
-      accum_grads_and_vars.append(grad_and_var)
-
-  return accum_grads_and_vars, zip(*grad_lists)
-
 def main(_):
   with tf.Session() as sess:
     action_size = gym.make(config.env_name).action_space.n
@@ -119,22 +89,10 @@ def main(_):
 
           tf.get_variable_scope().reuse_variables()
 
-          grad = global_optim.compute_gradients(network.total_loss)
-          grads.append(grad)
-
-      # Accumulate gradients for n-steps
-      accum_grads_and_vars, grads_per_step = accumulate_gradients(grads, global_network)
-      apply_gradeint = global_optim.apply_gradients(accum_grads_and_vars)
-
-      # Add dummy_op to execute optimizer with partial_run
-      with tf.control_dependencies([apply_gradeint]):
-        fake_apply_gradient = tf.constant(0)
-
       env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
                         config.history_length, config.data_format, config.display,
                         config.screen_height, config.screen_width)
-
-      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, env, fake_apply_gradient, grads_per_step, config)
+      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, env, global_network, global_optim, config)
 
     tf.initialize_all_variables().run()
 
@@ -153,6 +111,9 @@ def main(_):
         state, reward, terminal = model.env.step(-1, is_training=True)
         # 3. observe
         model.observe(state, reward, terminal)
+
+        if terminal:
+          model.env.new_random_game()
       logger.info("loop : %2.2f sec" % (time.time() - start_time))
 
     # Prepare each workers to run asynchronously

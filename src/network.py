@@ -76,6 +76,9 @@ class Network(object):
 
         self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
 
+      # Add accumulated gradient ops for n-step Q-learning
+      accum_grads, accum_grad_adds, reset_grads = [], [], []
+
   def save_model(self, saver, checkpoint_dir, step=None):
     print(" [*] Saving checkpoints...")
     model_name = type(self).__name__
