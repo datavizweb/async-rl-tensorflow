@@ -125,7 +125,6 @@ def main(_):
       # Accumulate gradients for n-steps
       accum_grads_and_vars, grads_per_step = accumulate_gradients(grads, global_network)
       apply_gradeint = global_optim.apply_gradients(accum_grads_and_vars)
-      import ipdb; ipdb.set_trace()
 
       env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
                                     config.history_length, config.data_format, config.display,

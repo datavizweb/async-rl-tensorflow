@@ -4,11 +4,11 @@ import numpy as np
 expand = lambda s_t: np.expand_dims(s_t, 0)
 
 class A3C_FF(object):
-  def __init__(self, worker_id, sess, local_networks, local_env, apply_gradeint, config):
+  def __init__(self, worker_id, sess, local_networks, local_env, apply_gradient, config):
     self.sess = sess
     self.env = local_env
     self.networks = local_networks
-    self.apply_gradeint = apply_gradeint
+    self.apply_gradient = apply_gradient
 
     self.t = 0
     self.t_start = 0
@@ -40,24 +40,35 @@ class A3C_FF(object):
     self.prev_value = {}
     self.prev_reward = {}
 
-    partial_run = {}
-    import ipdb; ipdb.set_trace() 
-    for key in self.apply_gradeint.keys():
-      targets = [self.networks[t].pred_action for t in range(key)]
+  def reset_partial_graph(self):
+    targets = [network.pred_action for network in self.networks]
+    targets.extend([network.value for network in self.networks])
+    targets.append(self.apply_gradient)
 
-      partial_run[key] = sess.partial_run_setup(
-          targets + [self.apply_gradeint[key]], [x])
+    inputs = [network.s_t for network in self.networks]
+    inputs.extend([network.R for network in self.networks])
+    inputs.extend([network.true_action for network in self.networks])
+
+    self.partial_graph = self.sess.partial_run_setup(targets, inputs)
 
   def predict(self, s_t, test_ep=None):
     ep = test_ep or (self.ep_end +
         max(0., (self.ep_start - self.ep_end)
           * (self.ep_end_t - self.t) / self.ep_end_t))
 
+    if self.t_start - self.t == 0:
+      self.reset_partial_graph()
+
     if random.random() < 0:
       action = random.randrange(self.env.action_size)
     else:
-      action = self.networks[0].predict([s_t])
-      action = action[0]
+      action = self.sess.partial_run(
+          self.partial_graph,
+          self.networks[self.t_start - self.t].pred_action,
+          {
+            self.networks[self.t_start - self.t].s_t: [s_t]
+          }
+      )[0]
 
     self.prev_a[self.t] = action
 
@@ -71,14 +82,18 @@ class A3C_FF(object):
 
     self.prev_value[self.t] = r_t
 
-    if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
+    if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max - 1:
       r = {}
 
       if terminal:
         r[self.t] = 0.
       else:
-        r[self.t] = self.networks[0].calc_value([s_t])[0][0]
+        r[self.t] = self.sess.partial_run(
+            self.partial_graph,
+            self.networks[self.t_start - self.t].value,
+        )[0][0]
 
+      import ipdb; ipdb.set_trace() 
       for t in xrange(self.t - 1, self.t_start - 1, -1):
         r[t] = self.prev_r[t + 1] + self.gamma * r[t + 1]
 
@@ -90,7 +105,7 @@ class A3C_FF(object):
       data.update({
         self.networks[t].true_action : [self.prev_a[t + self.t_start]] for t in xrange(len(self.prev_r) - 1)})
 
-      self.sess.run(self.apply_gradeint[len(self.prev_r) - 1], feed_dict=data)
+      self.sess.run(self.apply_gradient[len(self.prev_r) - 1], feed_dict=data)
 
       #self.copy_from_global()
 
