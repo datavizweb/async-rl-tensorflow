@@ -8,7 +8,7 @@ class Network(object):
                screen_height, screen_width,
                action_size, activation_fn=tf.nn.relu,
                initializer=tf.truncated_normal_initializer(0, 0.02), 
-               gamma=0.01, beta=0.0, global_network=None):
+               gamma=0.01, beta=0.0, global_network=None, global_optim=None):
     self.sess = sess
 
     if data_format == 'NHWC':
@@ -40,12 +40,14 @@ class Network(object):
 
       self.policy = tf.nn.softmax(self.policy_logits, name='pi')
       self.log_policy = tf.log(tf.nn.softmax(self.policy_logits))
-      self.entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
+      self.policy_entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
 
       self.pred_action = tf.argmax(self.policy, dimension=1)
 
       self.sampled_actions = batch_sample(self.policy)
-      self.log_policy_from_sampled_actions = tf.gather(self.log_policy, self.sampled_actions)
+      sampled_action_one_hot = tf.one_hot(self.sampled_actions, action_size, 1., 0.)
+
+      self.log_policy_from_sampled_actions = tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
 
     with tf.variable_scope('value'):
       # 512 -> 1
@@ -55,10 +57,10 @@ class Network(object):
       self.R = tf.placeholder('float32', [None], name='target_reward')
 
       self.true_action = tf.placeholder('int64', [None], name='true_action')
-      action_one_hot = tf.one_hot(self.true_action, action_size, 1.0, 0.0, name='action_one_hot')
+      action_one_hot = tf.one_hot(self.true_action, action_size, 1., 0., name='action_one_hot')
 
       self.policy_loss = tf.reduce_sum(self.log_policy * action_one_hot, 1) \
-          * (self.R - self.value + beta * self.entropy)
+          * (self.R - self.value + beta * self.policy_entropy)
       self.value_loss = tf.pow(self.R - self.value, 2)
 
       self.total_loss = self.policy_loss + self.value_loss
@@ -72,6 +74,28 @@ class Network(object):
           copy_ops.append(copy_op)
 
         self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
+
+      with tf.variable_scope('accumulate_gradients'):
+        accum_grads, reset_grads = [], []
+        grads = tf.gradients(self.total_loss, self.w.values())
+        #grads = tf.gradients(self.total_loss, [v.ref() for v in self.w.values()])
+
+        for grad, var in zip(grads, self.w.values()):
+          if grad != None:
+            shape = grad.get_shape().as_list()
+
+            accum_grad = tf.Variable(
+                tf.zeros(shape), trainable=False, name='accum_%s' % var.name)
+
+            #accum_grads.append(tf.assign_add(accum_grad, grad))
+            #reset_grads.append(accum_grad.assign(tf.zeros(shape)))
+
+  def predict(self, s_t):
+    return self.sess.run([
+        self.log_policy_from_sampled_actions,
+        self.policy_entropy,
+        self.value
+      ], feed_dict={self.s_t: s_t})
 
   def save_model(self, saver, checkpoint_dir, step=None):
     print(" [*] Saving checkpoints...")

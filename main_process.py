@@ -92,7 +92,7 @@ def main(_):
       model.env.new_random_game()
 
       start_time = time.time()
-      for _ in range(1000):
+      for _ in range(3000):
         state, reward, terminal = model.env.step(-1, is_training=True)
         action = model.predict(state)
         idx += 1

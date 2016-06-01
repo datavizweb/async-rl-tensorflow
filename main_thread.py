@@ -60,14 +60,15 @@ def main(_):
   with tf.Session() as sess:
     action_size = gym.make(config.env_name).action_space.n
 
-    def make_network(sess, global_network=None, name=None):
+    def make_network(sess, global_network=None, global_optim=None, name=None):
       with tf.variable_scope(name) as scope:
         return Network(sess, config.data_format,
                 config.history_length,
                 config.screen_height,
                 config.screen_width,
                 action_size,
-                global_network=global_network,)
+                global_network=global_network,
+                global_optim=global_optim)
 
     global_network = make_network(sess, name='A3C_global')
     global_optim = tf.train.RMSPropOptimizer(config.learning_rate,
@@ -78,27 +79,28 @@ def main(_):
     # prepare variables for each thread
     A3C_FFs = {}
     for worker_id in range(config.n_worker):
-      network = make_network(sess, global_network, name='A3C_%d' % worker_id)
+      network = make_network(sess, global_network, global_optim, name='A3C_%d' % worker_id)
       env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
                                     config.history_length, config.data_format, config.display,
                                     config.screen_height, config.screen_width)
 
-      A3C_FFs[worker_id] = A3C_FF(worker_id, global_network, global_optim, network, env, config)
+      A3C_FFs[worker_id] = A3C_FF(worker_id, network, env, config)
 
     tf.initialize_all_variables().run()
 
     @timeit
     def worker_func(worker_id):
       model = A3C_FFs[worker_id]
-
-      idx = 0
-      model.env.new_random_game()
+      state, reward, terminal = model.env.new_random_game()
 
       start_time = time.time()
-      for _ in range(1000):
-        state, reward, terminal = model.env.step(-1, is_training=True)
+      for _ in range(3000):
+        # 1. predict
         action = model.predict(state)
-        idx += 1
+        # 2. step
+        state, reward, terminal = model.env.step(-1, is_training=True)
+        # 3. observe
+        model.observe(state, reward, terminal)
       logger.info("loop : %2.2f sec" % (time.time() - start_time))
 
     # Prepare each workers to run asynchronously
