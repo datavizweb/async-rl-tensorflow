@@ -39,7 +39,7 @@ class A3C_FF(object):
     if random.random() < 0:
       action = random.randrange(self.env.action_size)
     else:
-      policy_from_sampled_actions, policy_entropy, value = self.network.predict(expand(s_t))
+      log_policy_from_sampled_actions, policy_entropy, value = self.network.predict(expand(s_t))
 
       self.prev_log_policy_sampled[self.t] = log_policy_from_sampled_actions
       self.prev_policy_entropy[self.t] = policy_entropy

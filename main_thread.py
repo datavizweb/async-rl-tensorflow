@@ -10,6 +10,7 @@ from src.utils import timeit, range
 from src.models import A3C_FF
 from src.network import Network
 from src.environment import Environment
+from src.rmsprop import RMSPropOptimizer
 
 flags = tf.app.flags
 
@@ -71,10 +72,10 @@ def main(_):
                 global_optim=global_optim)
 
     global_network = make_network(sess, name='A3C_global')
-    global_optim = tf.train.RMSPropOptimizer(config.learning_rate,
-                                             config.decay,
-                                             config.momentum,
-                                             config.epsilon)
+    global_optim = RMSPropOptimizer(config.learning_rate,
+                                    config.decay,
+                                    config.momentum,
+                                    config.epsilon)
 
     # prepare variables for each thread
     A3C_FFs = {}
