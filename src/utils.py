@@ -17,7 +17,7 @@ def get_model_dir(config):
   keys.remove('env_name')
   keys = ['env_name'] + keys
 
-  names = ['checkpoints', config.env_name]
+  names = [config.env_name]
   for key in keys:
     # Only use useful flags
     if key not in ['log_level', 'max_random_start', 'n_worker', 'random_seed', 't_save', 't_train']:

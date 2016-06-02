@@ -4,7 +4,7 @@ Tensorflow implementation of [Asynchronous Methods for Deep Reinforcement Learni
 
 ![model](assets/a3c.png)
 
-Our implementation use GPU to overcome the bottleneck caused by python GIL while using multithreading.
+Our implementation use a GPU to overcome the bottleneck caused by GIL (Global Interpreter Lock) of Python.
 
 
 ## Requirements

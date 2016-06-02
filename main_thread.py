@@ -1,15 +1,14 @@
+import os
 import gym
 import random
 import logging
-import numpy as np
-from tqdm import tqdm
 import tensorflow as tf
 from threading import Thread
 
-from src.utils import timeit, get_model_dir, range
 from src.models import A3C_FF
 from src.network import Network
 from src.environment import Environment
+from src.utils import timeit, get_model_dir, range
 
 flags = tf.app.flags
 
@@ -38,8 +37,9 @@ flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
-flags.DEFINE_integer('t_save', 5, 'The maximum number of t while training')
-flags.DEFINE_integer('t_train', 500, 'The maximum number of t while training')
+flags.DEFINE_integer('t_save', 100, 'The maximum number of t while training')
+flags.DEFINE_integer('t_test', 10, 'The maximum number of t while training')
+flags.DEFINE_integer('t_train_max', 8*10**7, 'The maximum number of t while training')
 flags.DEFINE_integer('n_worker', 4, 'The number of workers to run asynchronously')
 
 # Debug
@@ -61,6 +61,8 @@ random.seed(config.random_seed)
 global_t = 0
 
 def main(_):
+  global global_t
+
   with tf.Session() as sess:
     action_size = gym.make(config.env_name).action_space.n
 
@@ -79,6 +81,13 @@ def main(_):
                                              config.decay,
                                              config.momentum,
                                              config.epsilon)
+
+    global_t_op = tf.Variable(0, trainable=False, name='global_t')
+    global_t_input = tf.placeholder('int32', None, name='global_t_input')
+    global_t_assign_op = global_t_op.assign(global_t_input)
+
+    def assign_global_t_op(time):
+      sess.run(global_t_assign_op, {global_t_input: time})
 
     # prepare variables for each thread
     A3C_FFs = {}
@@ -99,22 +108,27 @@ def main(_):
 
     tf.initialize_all_variables().run()
 
-    checkpoint_dir = get_model_dir(config)
+    model_dir = get_model_dir(config)
+    checkpoint_dir = os.path.join('checkpoints', model_dir)
 
-    saver = tf.train.Saver(global_network.w.values(), max_to_keep=10)
+    saver = tf.train.Saver(global_network.w.values() + [global_t_op], max_to_keep=10)
+    writer = tf.train.SummaryWriter('./logs/%s' % model_dir, sess.graph)
+
     global_network.load_model(saver, checkpoint_dir)
+    global_t = global_t_op.eval()
 
     # Copy weights of global_network to local_network
     for worker_id in range(config.n_worker):
       A3C_FFs[worker_id].networks[0].copy_from_global()
 
+    import ipdb; ipdb.set_trace() 
     @timeit
     def worker_func(worker_id):
       global global_t
 
       model = A3C_FFs[worker_id]
       if worker_id == 0:
-        model.train_with_log(global_t, saver)
+        model.train_with_log(global_t, saver, writer, checkpoint_dir, assign_global_t_op)
       else:
         model.train(global_t)
 

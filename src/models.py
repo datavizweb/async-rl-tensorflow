@@ -4,7 +4,7 @@ import random
 import numpy as np
 import tensorflow as tf
 
-from .utils import range
+from .utils import range, logger
 
 expand = lambda s_t: np.expand_dims(s_t, 0)
 
@@ -23,7 +23,8 @@ class A3C_FF(object):
     self.t_start = 0
     self.t_max = config.t_max
     self.t_save = config.t_save
-    self.t_train = config.t_train
+    self.t_test = config.t_test
+    self.t_train_max = config.t_train_max
 
     self.ep_start = config.ep_start
     self.ep_end = config.ep_end
@@ -49,8 +50,8 @@ class A3C_FF(object):
 
     if worker_id == 0:
       with tf.variable_scope('summary'):
-        scalar_summary_tags = ['average/reward', 'average/loss', 'average/q', \
-            'episode/max reward', 'episode/min reward', 'episode/avg reward', 'episode/num of game', 'training/learning_rate']
+        scalar_summary_tags = ['average/reward', \
+            'episode/max reward', 'episode/min reward', 'episode/avg reward', 'episode/num of game']
 
         self.summary_placeholders = {}
         self.summary_ops = {}
@@ -71,8 +72,8 @@ class A3C_FF(object):
     self.observe(state, reward, terminal)
 
     start_time = time.time()
-    for _ in xrange(100):
-      if global_t > self.t_train:
+    while True:
+      if global_t > self.t_train_max:
         break
 
       # 1. Predict
@@ -87,13 +88,11 @@ class A3C_FF(object):
 
       global_t += 1
 
-    print("loop : %2.2f sec" % (time.time() - start_time))
+    logger.info("loop : %2.2f sec" % (time.time() - start_time))
 
-  def train_with_log(self, global_t, saver):
-    start_time = time.time()
-
+  def train_with_log(self, global_t, saver, writer, checkpoint_dir, assign_global_t_op):
     num_game, self.update_count, ep_reward = 0, 0, 0.
-    total_reward, self.total_loss, self.total_q = 0., 0., 0.
+    total_reward = 0
     max_avg_ep_reward = 0
     ep_rewards, actions = [], []
 
@@ -101,8 +100,9 @@ class A3C_FF(object):
     state, reward, terminal = self.env.new_random_game()
     self.observe(state, reward, terminal)
 
+    start_time = time.time()
     while True:
-      if global_t > self.t_train:
+      if global_t > self.t_train_max:
         break
 
       # 1. Predict
@@ -126,10 +126,8 @@ class A3C_FF(object):
       actions.append(action)
       total_reward += reward
 
-      if self.t % self.test_step == self.test_step - 1:
-        avg_reward = total_reward / self.test_step
-        avg_loss = self.total_loss / self.update_count
-        avg_q = self.total_q / self.update_count
+      if self.t % self.t_test == self.t_test - 1:
+        avg_reward = total_reward / self.t_test
 
         try:
           max_ep_reward = np.max(ep_rewards)
@@ -138,28 +136,25 @@ class A3C_FF(object):
         except:
           max_ep_reward, min_ep_reward, avg_ep_reward = 0, 0, 0
 
-        print '\navg_r: %.4f, avg_l: %.6f, avg_q: %3.6f, avg_ep_r: %.4f, max_ep_r: %.4f, min_ep_r: %.4f, # game: %d' \
-            % (avg_reward, avg_loss, avg_q, avg_ep_reward, max_ep_reward, min_ep_reward, num_game)
+        logger.info('\nglobal_t: %d, avg_r: %.4f, avg_ep_r: %.4f, max_ep_r: %.4f, min_ep_r: %.4f, # game: %d' \
+            % (global_t, avg_reward, avg_ep_reward, max_ep_reward, min_ep_reward, num_game))
 
-        if max_avg_ep_reward * 0.9 <= avg_ep_reward:
-          self.step_assign_op.eval({self.step_input: self.t})
-          self.global_network.save_model(self.t + 1)
+        self.inject_summary(writer, {
+            'average/reward': avg_reward,
+            'episode/max reward': max_ep_reward,
+            'episode/min reward': min_ep_reward,
+            'episode/avg reward': avg_ep_reward,
+            'episode/num of game': num_game,
+            'episode/rewards': ep_rewards,
+            'episode/actions': actions,
+          })
+
+        if self.t % self.t_save == self.t_save - 1:
+          assign_global_t_op(self.t)
+          self.global_network.save_model(saver, checkpoint_dir, step=global_t)
+          print self.sess.run(self.global_network.w.items()[0][1]).sum()
 
           max_avg_ep_reward = max(max_avg_ep_reward, avg_ep_reward)
-
-        if self.step > 180:
-          self.inject_summary({
-              'average/reward': avg_reward,
-              'average/loss': avg_loss,
-              'average/q': avg_q,
-              'episode/max reward': max_ep_reward,
-              'episode/min reward': min_ep_reward,
-              'episode/avg reward': avg_ep_reward,
-              'episode/num of game': num_game,
-              'episode/rewards': ep_rewards,
-              'episode/actions': actions,
-              'training/learning_rate': self.learning_rate_op.eval({self.learning_rate_step: self.step}),
-            }, self.step)
 
         num_game = 0
         total_reward = 0.
@@ -299,12 +294,11 @@ class A3C_FF(object):
       self.networks[0].copy_from_global()
 
       self.prev_r = {self.t: self.prev_r[self.t]}
-
       self.t_start = self.t
 
-  def inject_summary(self, tag_dict, step):
+  def inject_summary(self, writer, tag_dict):
     summary_str_lists = self.sess.run([self.summary_ops[tag] for tag in tag_dict.keys()], {
       self.summary_placeholders[tag]: value for tag, value in tag_dict.items()
     })
     for summary_str in summary_str_lists:
-      self.writer.add_summary(summary_str, self.step)
+      writer.add_summary(summary_str, self.t)
