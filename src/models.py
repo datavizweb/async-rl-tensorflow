@@ -68,12 +68,13 @@ class A3C_FF(object):
           self.summary_ops[tag] = tf.histogram_summary(tag, self.summary_placeholders[tag])
 
         summaries = []
-        avg_value = tf.reduce_mean(self.networks[0].value, 0)
-        value_summary = tf.scalar_summary('value', avg_value)
+        avg_value = tf.reduce_mean(self.networks[0].value)
+        summaries.append(tf.scalar_summary('value/', avg_value))
 
         avg_policy = tf.reduce_mean(self.networks[0].policy, 0)
         for idx in range(self.env.action_size):
-          summaries.append(tf.histogram_summary('policy/%s' % idx, avg_policy[idx]))
+          summaries.append(tf.scalar_summary('policy/%s' % idx, avg_policy[idx]))
+        summaries.append(tf.scalar_summary('policy/entropy', tf.reduce_mean(self.networks[0].policy_entropy)))
 
         self.value_policy_summary = tf.merge_summary(summaries, 'policy_summary')
 
@@ -103,7 +104,9 @@ class A3C_FF(object):
 
   def train_with_log(self, global_t, saver, writer, checkpoint_dir, assign_global_t_op):
     from tqdm import tqdm
+
     self.writer = writer
+    self.global_t = global_t
 
     num_game, self.update_count, ep_reward = 0, 0, 0.
     total_reward = 0
@@ -232,7 +235,9 @@ class A3C_FF(object):
     targets.extend([network.value for network in self.networks])
     targets.extend(self.add_accum_grads.values())
     targets.append(self.fake_apply_gradient)
-    targets.append(self.value_policy_summary)
+
+    if self.writer:
+      targets.append(self.value_policy_summary)
 
     inputs = [network.s_t for network in self.networks]
     inputs.extend([network.R for network in self.networks])
@@ -290,6 +295,7 @@ class A3C_FF(object):
       data.update({
         self.networks[t].R: [r[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
+
       data.update({
         self.networks[t].true_log_policy:
           [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
@@ -304,7 +310,7 @@ class A3C_FF(object):
             [self.value_policy_summary] + [self.add_accum_grads[t] for t in range(len(self.prev_r) - 1)], data)
 
         summary_str = results[0]
-        self.writer.add_summary(summary_str, self.step)
+        self.writer.add_summary(summary_str, self.global_t[0])
 
       # 2. Update global w with accumulated gradients
       self.sess.run(self.apply_gradient)
@@ -323,4 +329,4 @@ class A3C_FF(object):
       self.summary_placeholders[tag]: value for tag, value in tag_dict.items()
     })
     for summary_str in summary_str_lists:
-      self.writer.add_summary(summary_str, self.t)
+      self.writer.add_summary(summary_str, self.global_t[0])

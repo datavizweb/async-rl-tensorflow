@@ -48,7 +48,6 @@ class Network(object):
       self.policy = tf.nn.softmax(self.policy_logits, name='pi')
       self.log_policy = tf.log(tf.nn.softmax(self.policy_logits))
       self.policy_entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
-      _ = tf.scalar_summary('policy/entropy', self.policy_entropy)
 
       self.pred_action = tf.argmax(self.policy, dimension=1)
 
