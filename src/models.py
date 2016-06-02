@@ -49,6 +49,9 @@ class A3C_FF(object):
 
     self.make_accumulated_gradients()
 
+    # DEBUG
+    self.prev_s = {}
+
     if self.worker_id == 0:
       with tf.variable_scope('summary'):
         scalar_summary_tags = ['average/reward', \
@@ -277,6 +280,9 @@ class A3C_FF(object):
   def observe(self, s_t, r_t, terminal):
     self.prev_r[self.t] = max(self.min_reward, min(self.max_reward, r_t))
 
+    # DEBUG
+    self.prev_s[self.t] = s_t.copy()
+
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
       r = {}
 
@@ -300,6 +306,33 @@ class A3C_FF(object):
         self.networks[t].true_log_policy:
           [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
+
+      # DEBUG
+      total_data = {self.networks[t].s_t: [self.prev_s[t]] for t in range(len(self.prev_r) - 1)}
+      total_data.update(data)
+
+      policy_losses = self.sess.run([
+        self.networks[t].policy_loss for t in range(len(self.prev_r) - 1)],
+        total_data
+      )
+      value_losses = self.sess.run([
+        self.networks[t].value_loss for t in range(len(self.prev_r) - 1)],
+        total_data
+      )
+      value = self.sess.run([
+        self.networks[t].value for t in range(len(self.prev_r) - 1)],
+        total_data
+      )
+
+      print
+      print self.t, "policy_losses", policy_losses
+      print self.t, "value_losses", value_losses
+      print self.t, "value", value
+
+      for i, j in zip(value, r.values()):
+        print self.t, "v, r: ", i, j
+      print self.t, "V_loss", np.sum(value_losses)
+      print
 
       # 1. Update accumulated gradients
       if not self.writer:
