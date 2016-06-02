@@ -5,15 +5,15 @@ import numpy as np
 import tensorflow as tf
 
 from .utils import range, logger
+from .environment import Environment
 
 expand = lambda s_t: np.expand_dims(s_t, 0)
 
 class A3C_FF(object):
-  def __init__(self, worker_id, sess, local_networks, local_env,
+  def __init__(self, worker_id, sess, local_networks,
                global_network, global_optim, config):
     self.sess = sess
-
-    self.env = local_env
+    self.worker_id = worker_id
     self.networks = local_networks
 
     self.global_network = global_network
@@ -35,7 +35,6 @@ class A3C_FF(object):
     self.min_reward = config.min_reward
 
     self.data_format = config.data_format
-    self.action_size = self.env.action_size
     self.screen_height = config.screen_height
     self.screen_width = config.screen_width
     self.history_length = config.history_length
@@ -48,7 +47,7 @@ class A3C_FF(object):
 
     self.make_accumulated_gradients()
 
-    if worker_id == 0:
+    if self.worker_id == 0:
       with tf.variable_scope('summary'):
         scalar_summary_tags = ['average/reward', \
             'episode/max reward', 'episode/min reward', 'episode/avg reward', 'episode/num of game']
@@ -65,6 +64,11 @@ class A3C_FF(object):
         for tag in histogram_summary_tags:
           self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
           self.summary_ops[tag]  = tf.histogram_summary(tag, self.summary_placeholders[tag])
+
+  def make_env(self, config): 
+    self.env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
+                      config.history_length, config.data_format, config.display,
+                      config.screen_height, config.screen_width)
 
   def train(self, global_t):
     # 0. Prepare training
@@ -87,6 +91,7 @@ class A3C_FF(object):
         self.env.new_random_game()
 
       global_t += 1
+      #logger.info("%s %s" % (self.worker_id, global_t))
 
     logger.info("loop : %2.2f sec" % (time.time() - start_time))
 
@@ -113,6 +118,7 @@ class A3C_FF(object):
       self.observe(state, reward, terminal)
 
       global_t += 1
+      #logger.info("%s %s" % (self.worker_id, global_t))
 
       if terminal:
         self.env.new_random_game()
@@ -152,7 +158,6 @@ class A3C_FF(object):
         if self.t % self.t_save == self.t_save - 1:
           assign_global_t_op(self.t)
           self.global_network.save_model(saver, checkpoint_dir, step=global_t)
-          print self.sess.run(self.global_network.w.items()[0][1]).sum()
 
           max_avg_ep_reward = max(max_avg_ep_reward, avg_ep_reward)
 

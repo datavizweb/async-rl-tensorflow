@@ -7,7 +7,6 @@ from threading import Thread
 
 from src.models import A3C_FF
 from src.network import Network
-from src.environment import Environment
 from src.utils import timeit, get_model_dir, range
 
 flags = tf.app.flags
@@ -16,7 +15,7 @@ flags = tf.app.flags
 flags.DEFINE_string('data_format', 'NCHW', 'The format of convolutional filter. NHWC for CPU and NCHW for GPU')
 flags.DEFINE_string('ep_start', 1., 'The value of epsilon at start in e-greedy')
 flags.DEFINE_string('ep_end', 0.1, 'The value of epsilnon at the end in e-greedy')
-flags.DEFINE_string('ep_end_t', 1000000, 'The time t when epsilon reach ep_end')
+flags.DEFINE_string('ep_end_t', 1e+6, 'The time t when epsilon reach ep_end')
 
 # Environment
 flags.DEFINE_string('env_name', 'Breakout-v0', 'The name of gym environment to use')
@@ -35,11 +34,11 @@ flags.DEFINE_float('decay', 0.99, 'Decay of RMSProp optimizer')
 flags.DEFINE_float('epsilon', 0.1, 'Epsilon of RMSProp optimizer')
 flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor of return')
-flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
+flags.DEFINE_float('beta', 0.01, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
-flags.DEFINE_integer('t_save', 100, 'The maximum number of t while training')
-flags.DEFINE_integer('t_test', 10, 'The maximum number of t while training')
-flags.DEFINE_integer('t_train_max', 8*10**7, 'The maximum number of t while training')
+flags.DEFINE_integer('t_save', 1e+5, 'The maximum number of t while training')
+flags.DEFINE_integer('t_test', 5e+3, 'The maximum number of t while training')
+flags.DEFINE_integer('t_train_max', 8e+7, 'The maximum number of t while training')
 flags.DEFINE_integer('n_worker', 4, 'The number of workers to run asynchronously')
 
 # Debug
@@ -100,11 +99,7 @@ def main(_):
           networks.append(network)
 
           tf.get_variable_scope().reuse_variables()
-
-      env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
-                        config.history_length, config.data_format, config.display,
-                        config.screen_height, config.screen_width)
-      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, env, global_network, global_optim, config)
+      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, global_network, global_optim, config)
 
     tf.initialize_all_variables().run()
 
@@ -121,12 +116,13 @@ def main(_):
     for worker_id in range(config.n_worker):
       A3C_FFs[worker_id].networks[0].copy_from_global()
 
-    import ipdb; ipdb.set_trace() 
     @timeit
     def worker_func(worker_id):
       global global_t
 
       model = A3C_FFs[worker_id]
+      model.make_env(config)
+
       if worker_id == 0:
         model.train_with_log(global_t, saver, writer, checkpoint_dir, assign_global_t_op)
       else:
