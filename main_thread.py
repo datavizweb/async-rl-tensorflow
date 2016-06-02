@@ -2,11 +2,13 @@ import os
 import gym
 import random
 import logging
+import numpy as np
 import tensorflow as tf
 from threading import Thread
 
 from src.models import A3C_FF
 from src.network import Network
+from src.environment import Environment
 from src.utils import timeit, get_model_dir, range
 
 flags = tf.app.flags
@@ -36,8 +38,8 @@ flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.01, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
-flags.DEFINE_integer('t_save', 1e+5, 'The maximum number of t while training')
-flags.DEFINE_integer('t_test', 5e+3, 'The maximum number of t while training')
+flags.DEFINE_integer('t_save', 1e+3, 'The maximum number of t while training')
+flags.DEFINE_integer('t_test', 1e+2, 'The maximum number of t while training')
 flags.DEFINE_integer('t_train_max', 8e+7, 'The maximum number of t while training')
 flags.DEFINE_integer('n_worker', 4, 'The number of workers to run asynchronously')
 
@@ -57,12 +59,10 @@ logger.setLevel(config.log_level)
 tf.set_random_seed(config.random_seed)
 random.seed(config.random_seed)
 
-global_t = 0
-
 def main(_):
-  global global_t
-
   with tf.Session() as sess:
+    global_t = np.array([0])
+
     action_size = gym.make(config.env_name).action_space.n
 
     def make_network(sess, global_network=None, global_optim=None, name=None):
@@ -99,18 +99,22 @@ def main(_):
           networks.append(network)
 
           tf.get_variable_scope().reuse_variables()
-      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, global_network, global_optim, config)
+
+        env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
+                          config.history_length, config.data_format, config.display,
+                          config.screen_height, config.screen_width)
+      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, env, global_network, global_optim, config)
 
     tf.initialize_all_variables().run()
 
     model_dir = get_model_dir(config)
     checkpoint_dir = os.path.join('checkpoints', model_dir)
 
-    saver = tf.train.Saver(global_network.w.values() + [global_t_op], max_to_keep=10)
+    saver = tf.train.Saver(global_network.w.values() + [global_t_op], max_to_keep=20)
     writer = tf.train.SummaryWriter('./logs/%s' % model_dir, sess.graph)
 
     global_network.load_model(saver, checkpoint_dir)
-    global_t = global_t_op.eval()
+    global_t[0] = global_t_op.eval()
 
     # Copy weights of global_network to local_network
     for worker_id in range(config.n_worker):
@@ -118,10 +122,7 @@ def main(_):
 
     @timeit
     def worker_func(worker_id):
-      global global_t
-
       model = A3C_FFs[worker_id]
-      model.make_env(config)
 
       if worker_id == 0:
         model.train_with_log(global_t, saver, writer, checkpoint_dir, assign_global_t_op)

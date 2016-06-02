@@ -5,16 +5,17 @@ import numpy as np
 import tensorflow as tf
 
 from .utils import range, logger
-from .environment import Environment
 
 expand = lambda s_t: np.expand_dims(s_t, 0)
 
 class A3C_FF(object):
-  def __init__(self, worker_id, sess, local_networks,
+  def __init__(self, worker_id, sess, local_networks, local_env,
                global_network, global_optim, config):
     self.sess = sess
     self.worker_id = worker_id
+
     self.networks = local_networks
+    self.env = local_env
 
     self.global_network = global_network
     self.global_optim = global_optim
@@ -65,11 +66,6 @@ class A3C_FF(object):
           self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
           self.summary_ops[tag]  = tf.histogram_summary(tag, self.summary_placeholders[tag])
 
-  def make_env(self, config): 
-    self.env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
-                      config.history_length, config.data_format, config.display,
-                      config.screen_height, config.screen_width)
-
   def train(self, global_t):
     # 0. Prepare training
     state, reward, terminal = self.env.new_random_game()
@@ -77,7 +73,7 @@ class A3C_FF(object):
 
     start_time = time.time()
     while True:
-      if global_t > self.t_train_max:
+      if global_t[0] > self.t_train_max:
         break
 
       # 1. Predict
@@ -90,12 +86,13 @@ class A3C_FF(object):
       if terminal:
         self.env.new_random_game()
 
-      global_t += 1
-      #logger.info("%s %s" % (self.worker_id, global_t))
+      global_t[0] += 1
 
     logger.info("loop : %2.2f sec" % (time.time() - start_time))
 
   def train_with_log(self, global_t, saver, writer, checkpoint_dir, assign_global_t_op):
+    from tqdm import tqdm
+
     num_game, self.update_count, ep_reward = 0, 0, 0.
     total_reward = 0
     max_avg_ep_reward = 0
@@ -106,8 +103,9 @@ class A3C_FF(object):
     self.observe(state, reward, terminal)
 
     start_time = time.time()
-    while True:
-      if global_t > self.t_train_max:
+
+    for _ in tqdm(range(int(self.t_train_max)), ncols=70, initial=int(global_t[0])):
+      if global_t[0] > self.t_train_max:
         break
 
       # 1. Predict
@@ -117,8 +115,7 @@ class A3C_FF(object):
       # 3. Observe
       self.observe(state, reward, terminal)
 
-      global_t += 1
-      #logger.info("%s %s" % (self.worker_id, global_t))
+      global_t[0] += 1
 
       if terminal:
         self.env.new_random_game()
@@ -143,7 +140,7 @@ class A3C_FF(object):
           max_ep_reward, min_ep_reward, avg_ep_reward = 0, 0, 0
 
         logger.info('\nglobal_t: %d, avg_r: %.4f, avg_ep_r: %.4f, max_ep_r: %.4f, min_ep_r: %.4f, # game: %d' \
-            % (global_t, avg_reward, avg_ep_reward, max_ep_reward, min_ep_reward, num_game))
+          % (global_t[0], avg_reward, avg_ep_reward, max_ep_reward, min_ep_reward, num_game))
 
         self.inject_summary(writer, {
             'average/reward': avg_reward,
@@ -156,8 +153,8 @@ class A3C_FF(object):
           })
 
         if self.t % self.t_save == self.t_save - 1:
-          assign_global_t_op(self.t)
-          self.global_network.save_model(saver, checkpoint_dir, step=global_t)
+          assign_global_t_op(global_t[0])
+          self.global_network.save_model(saver, checkpoint_dir, step=global_t[0])
 
           max_avg_ep_reward = max(max_avg_ep_reward, avg_ep_reward)
 
