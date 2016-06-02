@@ -1,10 +1,28 @@
 import os
 import time
+import pprint
 import tensorflow as tf
-from logging import getLogger
 from six.moves import range
+from logging import getLogger
 
 logger = getLogger(__name__)
+pp = pprint.PrettyPrinter().pprint
+
+def get_model_dir(config):
+  attrs = config.__dict__['__flags']
+  pp(attrs)
+
+  keys = attrs.keys()
+  keys.sort()
+  keys.remove('env_name')
+  keys = ['env_name'] + keys
+
+  names = ['checkpoints', config.env_name]
+  for key in keys:
+    if key not in ['log_level', 'max_random_start', 'n_worker', 'random_seed']:
+      names.append("%s=%s" % (key, ",".join([str(i) for i in attrs[key]])
+          if type(attrs[key]) == list else attrs[key]))
+  return os.path.join(*names) + '/'
 
 try:
   import cv2

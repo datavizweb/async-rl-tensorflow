@@ -79,6 +79,9 @@ class Network(object):
       # Add accumulated gradient ops for n-step Q-learning
       accum_grads, accum_grad_adds, reset_grads = [], [], []
 
+  def copy_from_global(self):
+    self.sess.run(self.global_copy_op)
+
   def save_model(self, saver, checkpoint_dir, step=None):
     print(" [*] Saving checkpoints...")
     model_name = type(self).__name__

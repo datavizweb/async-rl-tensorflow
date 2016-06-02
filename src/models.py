@@ -1,4 +1,5 @@
 import re
+import time
 import random
 import numpy as np
 import tensorflow as tf
@@ -62,13 +63,14 @@ class A3C_FF(object):
         self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
         self.summary_ops[tag]  = tf.histogram_summary(tag, self.summary_placeholders[tag])
 
-      self.writer = tf.train.SummaryWriter('./logs/%s' % self.model_dir, self.sess.graph)
+      #self.writer = tf.train.SummaryWriter('./logs/%s' % self.model_dir, self.sess.graph)
 
   def train(self):
     state, reward, terminal = self.env.new_random_game()
     self.observe(state, reward, terminal)
 
-    while True:
+    start_time = time.time()
+    for _ in xrange(100):
       # 1. predict
       action = self.predict(state)
       # 2. step
@@ -78,6 +80,7 @@ class A3C_FF(object):
 
       if terminal:
         self.env.new_random_game()
+    print("loop : %2.2f sec" % (time.time() - start_time))
 
   def train_with_log(self, saver):
     start_time = time.time()
@@ -286,8 +289,8 @@ class A3C_FF(object):
       # 3. Reset accumulated gradients to zero
       self.sess.run(self.reset_accum_grad)
 
-      # 4. Copy w of global_network tot local_network
-      self.sess.run(self.networks[0].global_copy_op)
+      # 4. Copy weights of global_network to local_network
+      self.networks[0].copy_from_global()
 
       self.prev_s = {self.t: self.prev_s[self.t]}
       self.prev_r = {self.t: self.prev_r[self.t]}

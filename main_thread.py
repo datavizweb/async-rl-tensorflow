@@ -1,5 +1,4 @@
 import gym
-import time
 import random
 import logging
 import numpy as np
@@ -7,7 +6,7 @@ from tqdm import tqdm
 import tensorflow as tf
 from threading import Thread
 
-from src.utils import timeit, range
+from src.utils import timeit, get_model_dir, range
 from src.models import A3C_FF
 from src.network import Network
 from src.environment import Environment
@@ -96,8 +95,14 @@ def main(_):
 
     tf.initialize_all_variables().run()
 
-    saver = tf.train.Saver(global_network.w.values() + [step_op], max_to_keep=10)
+    checkpoint_dir = get_model_dir(config)
+
+    saver = tf.train.Saver(global_network.w.values(), max_to_keep=10)
     global_network.load_model(saver, checkpoint_dir)
+
+    # Copy weights of global_network to local_network
+    for worker_id in range(config.n_worker):
+      A3C_FFs[worker_id].networks[0].copy_from_global()
 
     @timeit
     def worker_func(worker_id):
@@ -106,7 +111,7 @@ def main(_):
       if worker_id == 0:
         model.train_with_log()
       else:
-        model.train(saver)
+        model.train()
 
     # Prepare each workers to run asynchronously
     workers = []
