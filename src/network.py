@@ -66,8 +66,8 @@ class Network(object):
       self.true_log_policy = tf.placeholder('float32', [None], name='true_action')
 
       # TODO: equation on paper and codes of other implementations are different
-      self.policy_loss = self.true_log_policy \
-          * (self.R - self.value + beta * self.policy_entropy)
+      self.policy_loss = -(self.true_log_policy \
+          * (self.R - self.value) + beta * self.policy_entropy)
       self.value_loss = tf.pow(self.R - self.value, 2)
 
       self.total_loss = self.policy_loss + self.value_loss
