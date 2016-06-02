@@ -13,6 +13,7 @@ class A3C_FF(object):
                global_network, global_optim, config):
     self.sess = sess
     self.worker_id = worker_id
+    self.writer = None
 
     self.networks = local_networks
     self.env = local_env
@@ -58,13 +59,23 @@ class A3C_FF(object):
 
         for tag in scalar_summary_tags:
           self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
-          self.summary_ops[tag]  = tf.scalar_summary(tag, self.summary_placeholders[tag])
+          self.summary_ops[tag] = tf.scalar_summary(tag, self.summary_placeholders[tag])
 
         histogram_summary_tags = ['episode/rewards', 'episode/actions']
 
         for tag in histogram_summary_tags:
           self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
-          self.summary_ops[tag]  = tf.histogram_summary(tag, self.summary_placeholders[tag])
+          self.summary_ops[tag] = tf.histogram_summary(tag, self.summary_placeholders[tag])
+
+        summaries = []
+        avg_value = tf.reduce_mean(self.networks[0].value, 0)
+        value_summary = tf.scalar_summary('value', avg_value)
+
+        avg_policy = tf.reduce_mean(self.networks[0].policy, 0)
+        for idx in range(self.env.action_size):
+          summaries.append(tf.histogram_summary('policy/%s' % idx, avg_policy[idx]))
+
+        self.value_policy_summary = tf.merge_summary(summaries, 'policy_summary')
 
   def train(self, global_t):
     # 0. Prepare training
@@ -92,6 +103,7 @@ class A3C_FF(object):
 
   def train_with_log(self, global_t, saver, writer, checkpoint_dir, assign_global_t_op):
     from tqdm import tqdm
+    self.writer = writer
 
     num_game, self.update_count, ep_reward = 0, 0, 0.
     total_reward = 0
@@ -142,7 +154,7 @@ class A3C_FF(object):
         logger.info('\nglobal_t: %d, avg_r: %.4f, avg_ep_r: %.4f, max_ep_r: %.4f, min_ep_r: %.4f, # game: %d' \
           % (global_t[0], avg_reward, avg_ep_reward, max_ep_reward, min_ep_reward, num_game))
 
-        self.inject_summary(writer, {
+        self.inject_summary({
             'average/reward': avg_reward,
             'episode/max reward': max_ep_reward,
             'episode/min reward': min_ep_reward,
@@ -220,6 +232,7 @@ class A3C_FF(object):
     targets.extend([network.value for network in self.networks])
     targets.extend(self.add_accum_grads.values())
     targets.append(self.fake_apply_gradient)
+    targets.append(self.value_policy_summary)
 
     inputs = [network.s_t for network in self.networks]
     inputs.extend([network.R for network in self.networks])
@@ -283,8 +296,15 @@ class A3C_FF(object):
       })
 
       # 1. Update accumulated gradients
-      self.sess.partial_run(self.partial_graph,
-          [self.add_accum_grads[t] for t in range(len(self.prev_r) - 1)], data)
+      if not self.writer:
+        self.sess.partial_run(self.partial_graph,
+            [self.add_accum_grads[t] for t in range(len(self.prev_r) - 1)], data)
+      else:
+        results = self.sess.partial_run(self.partial_graph,
+            [self.value_policy_summary] + [self.add_accum_grads[t] for t in range(len(self.prev_r) - 1)], data)
+
+        summary_str = results[0]
+        self.writer.add_summary(summary_str, self.step)
 
       # 2. Update global w with accumulated gradients
       self.sess.run(self.apply_gradient)
@@ -298,9 +318,9 @@ class A3C_FF(object):
       self.prev_r = {self.t: self.prev_r[self.t]}
       self.t_start = self.t
 
-  def inject_summary(self, writer, tag_dict):
+  def inject_summary(self, tag_dict):
     summary_str_lists = self.sess.run([self.summary_ops[tag] for tag in tag_dict.keys()], {
       self.summary_placeholders[tag]: value for tag, value in tag_dict.items()
     })
     for summary_str in summary_str_lists:
-      writer.add_summary(summary_str, self.t)
+      self.writer.add_summary(summary_str, self.t)
