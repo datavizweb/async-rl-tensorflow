@@ -123,7 +123,7 @@ class A3C_FF(object):
     start_time = time.time()
 
     #for _ in tqdm(range(int(self.t_train_max)), ncols=70, initial=int(global_t[0])):
-    for x in range(300):
+    for x in range(30):
       if global_t[0] > self.t_train_max:
         break
 
@@ -198,7 +198,7 @@ class A3C_FF(object):
 
     for step, network in enumerate(self.networks):
       _add_accum_grads = []
-      for loss in [network.value_loss, network.policy_loss]:
+      for loss in [network.policy_loss]:
         grads_and_vars = self.global_optim.compute_gradients(loss, network.w.values())
 
         for grad, var in tuple(grads_and_vars):

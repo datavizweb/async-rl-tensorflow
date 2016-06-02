@@ -68,7 +68,7 @@ class Network(object):
       # TODO: equation on paper and codes of other implementations are different
       self.policy_loss = -(self.true_log_policy \
           * (self.R - self.value) + beta * self.policy_entropy)
-      self.value_loss = tf.pow(self.R - self.value, 2)
+      self.value_loss = (self.value - self.R) ** 2 / 2
 
       self.total_loss = self.policy_loss + self.value_loss
 
