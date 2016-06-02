@@ -14,7 +14,7 @@ from src.environment import Environment
 flags = tf.app.flags
 
 # Deep q Network
-flags.DEFINE_string('data_format', 'NHWC', 'The format of convolutional filter')
+flags.DEFINE_string('data_format', 'NCHW', 'The format of convolutional filter. NHWC for CPU and NCHW for GPU')
 flags.DEFINE_string('ep_start', 1., 'The value of epsilon at start in e-greedy')
 flags.DEFINE_string('ep_end', 0.1, 'The value of epsilnon at the end in e-greedy')
 flags.DEFINE_string('ep_end_t', 1000000, 'The time t when epsilon reach ep_end')
@@ -38,6 +38,8 @@ flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
+flags.DEFINE_integer('t_save', 5, 'The maximum number of t while training')
+flags.DEFINE_integer('t_train', 500, 'The maximum number of t while training')
 flags.DEFINE_integer('n_worker', 4, 'The number of workers to run asynchronously')
 
 # Debug
@@ -55,6 +57,8 @@ logger.setLevel(config.log_level)
 # set random seed
 tf.set_random_seed(config.random_seed)
 random.seed(config.random_seed)
+
+global_t = 0
 
 def main(_):
   with tf.Session() as sess:
@@ -106,12 +110,13 @@ def main(_):
 
     @timeit
     def worker_func(worker_id):
-      model = A3C_FFs[worker_id]
+      global global_t
 
+      model = A3C_FFs[worker_id]
       if worker_id == 0:
-        model.train_with_log()
+        model.train_with_log(global_t, saver)
       else:
-        model.train()
+        model.train(global_t)
 
     # Prepare each workers to run asynchronously
     workers = []

@@ -19,7 +19,8 @@ def get_model_dir(config):
 
   names = ['checkpoints', config.env_name]
   for key in keys:
-    if key not in ['log_level', 'max_random_start', 'n_worker', 'random_seed']:
+    # Only use useful flags
+    if key not in ['log_level', 'max_random_start', 'n_worker', 'random_seed', 't_save', 't_train']:
       names.append("%s=%s" % (key, ",".join([str(i) for i in attrs[key]])
           if type(attrs[key]) == list else attrs[key]))
   return os.path.join(*names) + '/'

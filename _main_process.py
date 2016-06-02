@@ -38,6 +38,8 @@ flags.DEFINE_float('momentum', 0.0, 'Momentum of RMSProp optimizer')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor of return')
 flags.DEFINE_float('beta', 0.0, 'Beta of RMSProp optimizer')
 flags.DEFINE_integer('t_max', 5, 'The maximum number of t while training')
+flags.DEFINE_integer('t_save', 5, 'The maximum number of t while training')
+flags.DEFINE_integer('t_train', 500, 'The maximum number of t while training')
 flags.DEFINE_integer('n_worker', 4, 'The number of workers to run asynchronously')
 
 # Debug
@@ -58,14 +60,15 @@ random.seed(config.random_seed)
 
 def main(_):
   action_size = gym.make(config.env_name).action_space.n
-  def make_network(sess, global_network=None, name=None):
+  def make_network(sess, global_network=None, global_optim=None, name=None):
     with tf.variable_scope(name) as scope:
       return Network(sess, config.data_format,
               config.history_length,
               config.screen_height,
               config.screen_width,
               action_size,
-              global_network=global_network)
+              global_network=global_network,
+              global_optim=global_optim)
 
   server = tf.train.Server.create_local_server()
 
@@ -80,19 +83,26 @@ def main(_):
   @timeit
   def worker_func(worker_id):
     with tf.Session(server.target) as sess:
-      network = make_network(sess, global_network, name='A3C_%d' % worker_id)
+      networks, grads = [], []
+
+      for step in range(config.t_max):
+        network = make_network(sess, global_network, global_optim, name='A3C_%d' % (worker_id))
+        networks.append(network)
+
+        tf.get_variable_scope().reuse_variables()
+
       env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
                                     config.history_length, config.data_format, config.display,
                                     config.screen_height, config.screen_width)
 
-      model = A3C_FF(worker_id, global_network, global_optim, network, env, config)
+      model = A3C_FF(worker_id, sess, networks, env, global_network, global_optim, config)
       tf.initialize_all_variables().run(session=sess)
 
       idx = 0
       model.env.new_random_game()
 
       start_time = time.time()
-      for _ in range(3000):
+      for _ in range(100):
         state, reward, terminal = model.env.step(-1, is_training=True)
         action = model.predict(state)
         idx += 1

@@ -20,7 +20,14 @@ class Network(object):
     else:
       raise ValueError("unknown data_format : %s" % data_format)
 
-    with tf.variable_scope('Nature_DQN'), tf.device('/cpu:0'):
+    if data_format == 'NCHW':
+      device = '/gpu:0'
+    elif data_format == 'NHWC':
+      device = '/cpu:0'
+    else:
+      raise ValueError('Unknown data_format: %s' % data_format)
+
+    with tf.variable_scope('Nature_DQN'), tf.device(device):
       self.w = {}
 
       self.l0 = tf.div(self.s_t, 255.)

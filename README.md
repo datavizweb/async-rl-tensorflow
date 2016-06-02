@@ -4,6 +4,8 @@ Tensorflow implementation of [Asynchronous Methods for Deep Reinforcement Learni
 
 ![model](assets/a3c.png)
 
+Our implementation use GPU to overcome the bottleneck caused by python GIL while using multithreading.
+
 
 ## Requirements
 
@@ -22,7 +24,7 @@ First, install prerequisites with:
 
 To train a model for SpaceInvaders:
 
-    $ CUDA_VISIBLE_DEVICES="" python main.py --use_thread=True
+    $ python main_thread.py --n_worker=12
 
 
 ## Results

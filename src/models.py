@@ -22,6 +22,8 @@ class A3C_FF(object):
     self.t = 0
     self.t_start = 0
     self.t_max = config.t_max
+    self.t_save = config.t_save
+    self.t_train = config.t_train
 
     self.ep_start = config.ep_start
     self.ep_end = config.ep_end
@@ -37,7 +39,6 @@ class A3C_FF(object):
     self.screen_width = config.screen_width
     self.history_length = config.history_length
 
-    self.prev_s = {}
     self.prev_r = {}
     self.prev_log_policy = {}
 
@@ -46,43 +47,49 @@ class A3C_FF(object):
 
     self.make_accumulated_gradients()
 
-    with tf.variable_scope('summary'):
-      scalar_summary_tags = ['average/reward', 'average/loss', 'average/q', \
-          'episode/max reward', 'episode/min reward', 'episode/avg reward', 'episode/num of game', 'training/learning_rate']
+    if worker_id == 0:
+      with tf.variable_scope('summary'):
+        scalar_summary_tags = ['average/reward', 'average/loss', 'average/q', \
+            'episode/max reward', 'episode/min reward', 'episode/avg reward', 'episode/num of game', 'training/learning_rate']
 
-      self.summary_placeholders = {}
-      self.summary_ops = {}
+        self.summary_placeholders = {}
+        self.summary_ops = {}
 
-      for tag in scalar_summary_tags:
-        self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
-        self.summary_ops[tag]  = tf.scalar_summary(tag, self.summary_placeholders[tag])
+        for tag in scalar_summary_tags:
+          self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
+          self.summary_ops[tag]  = tf.scalar_summary(tag, self.summary_placeholders[tag])
 
-      histogram_summary_tags = ['episode/rewards', 'episode/actions']
+        histogram_summary_tags = ['episode/rewards', 'episode/actions']
 
-      for tag in histogram_summary_tags:
-        self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
-        self.summary_ops[tag]  = tf.histogram_summary(tag, self.summary_placeholders[tag])
+        for tag in histogram_summary_tags:
+          self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
+          self.summary_ops[tag]  = tf.histogram_summary(tag, self.summary_placeholders[tag])
 
-      #self.writer = tf.train.SummaryWriter('./logs/%s' % self.model_dir, self.sess.graph)
-
-  def train(self):
+  def train(self, global_t):
+    # 0. Prepare training
     state, reward, terminal = self.env.new_random_game()
     self.observe(state, reward, terminal)
 
     start_time = time.time()
     for _ in xrange(100):
-      # 1. predict
+      if global_t > self.t_train:
+        break
+
+      # 1. Predict
       action = self.predict(state)
-      # 2. step
+      # 2. Step
       state, reward, terminal = self.env.step(-1, is_training=True)
-      # 3. observe
+      # 3. Observe
       self.observe(state, reward, terminal)
 
       if terminal:
         self.env.new_random_game()
+
+      global_t += 1
+
     print("loop : %2.2f sec" % (time.time() - start_time))
 
-  def train_with_log(self, saver):
+  def train_with_log(self, global_t, saver):
     start_time = time.time()
 
     num_game, self.update_count, ep_reward = 0, 0, 0.
@@ -90,21 +97,22 @@ class A3C_FF(object):
     max_avg_ep_reward = 0
     ep_rewards, actions = [], []
 
+    # 0. Prepare training
     state, reward, terminal = self.env.new_random_game()
     self.observe(state, reward, terminal)
 
-    for step in xrange(10000000):
-      if self.step == self.learn_start:
-        num_game, self.update_count, ep_reward = 0, 0, 0.
-        total_reward, self.total_loss, self.total_q = 0., 0., 0.
-        ep_rewards, actions = [], []
+    while True:
+      if global_t > self.t_train:
+        break
 
-      # 1. predict
+      # 1. Predict
       action = self.predict(state)
-      # 2. step
+      # 2. Step
       state, reward, terminal = self.env.step(-1, is_training=True)
-      # 3. observe
+      # 3. Observe
       self.observe(state, reward, terminal)
+
+      global_t += 1
 
       if terminal:
         self.env.new_random_game()
@@ -118,47 +126,48 @@ class A3C_FF(object):
       actions.append(action)
       total_reward += reward
 
-      if self.step >= self.learn_start:
-        if self.step % self.test_step == self.test_step - 1:
-          avg_reward = total_reward / self.test_step
-          avg_loss = self.total_loss / self.update_count
-          avg_q = self.total_q / self.update_count
+      if self.t % self.test_step == self.test_step - 1:
+        avg_reward = total_reward / self.test_step
+        avg_loss = self.total_loss / self.update_count
+        avg_q = self.total_q / self.update_count
 
-          try:
-            max_ep_reward = np.max(ep_rewards)
-            min_ep_reward = np.min(ep_rewards)
-            avg_ep_reward = np.mean(ep_rewards)
-          except:
-            max_ep_reward, min_ep_reward, avg_ep_reward = 0, 0, 0
+        try:
+          max_ep_reward = np.max(ep_rewards)
+          min_ep_reward = np.min(ep_rewards)
+          avg_ep_reward = np.mean(ep_rewards)
+        except:
+          max_ep_reward, min_ep_reward, avg_ep_reward = 0, 0, 0
 
-          print '\navg_r: %.4f, avg_l: %.6f, avg_q: %3.6f, avg_ep_r: %.4f, max_ep_r: %.4f, min_ep_r: %.4f, # game: %d' \
-              % (avg_reward, avg_loss, avg_q, avg_ep_reward, max_ep_reward, min_ep_reward, num_game)
+        print '\navg_r: %.4f, avg_l: %.6f, avg_q: %3.6f, avg_ep_r: %.4f, max_ep_r: %.4f, min_ep_r: %.4f, # game: %d' \
+            % (avg_reward, avg_loss, avg_q, avg_ep_reward, max_ep_reward, min_ep_reward, num_game)
 
-          if max_avg_ep_reward * 0.9 <= avg_ep_reward:
-            self.step_assign_op.eval({self.step_input: self.step + 1})
-            self.global_network.save_model(self.step + 1)
+        if max_avg_ep_reward * 0.9 <= avg_ep_reward:
+          self.step_assign_op.eval({self.step_input: self.t})
+          self.global_network.save_model(self.t + 1)
 
-            max_avg_ep_reward = max(max_avg_ep_reward, avg_ep_reward)
+          max_avg_ep_reward = max(max_avg_ep_reward, avg_ep_reward)
 
-          if self.step > 180:
-            self.inject_summary({
-                'average/reward': avg_reward,
-                'average/loss': avg_loss,
-                'average/q': avg_q,
-                'episode/max reward': max_ep_reward,
-                'episode/min reward': min_ep_reward,
-                'episode/avg reward': avg_ep_reward,
-                'episode/num of game': num_game,
-                'episode/rewards': ep_rewards,
-                'episode/actions': actions,
-                'training/learning_rate': self.learning_rate_op.eval({self.learning_rate_step: self.step}),
-              }, self.step)
+        if self.step > 180:
+          self.inject_summary({
+              'average/reward': avg_reward,
+              'average/loss': avg_loss,
+              'average/q': avg_q,
+              'episode/max reward': max_ep_reward,
+              'episode/min reward': min_ep_reward,
+              'episode/avg reward': avg_ep_reward,
+              'episode/num of game': num_game,
+              'episode/rewards': ep_rewards,
+              'episode/actions': actions,
+              'training/learning_rate': self.learning_rate_op.eval({self.learning_rate_step: self.step}),
+            }, self.step)
 
-          num_game = 0
-          total_reward = 0.
-          ep_reward = 0.
-          ep_rewards = []
-          actions = []
+        num_game = 0
+        total_reward = 0.
+        ep_reward = 0.
+        ep_rewards = []
+        actions = []
+
+    print("loop : %2.2f sec" % (time.time() - start_time))
 
   # Add accumulated gradient ops for n-step Q-learning
   def make_accumulated_gradients(self):
@@ -167,7 +176,7 @@ class A3C_FF(object):
     reset_accum_grads = []
     new_grads_and_vars = []
 
-    # 1. accum_grads
+    # 1. Prepare accum_grads
     self.accum_grads = {}
     self.add_accum_grads = {}
 
@@ -251,10 +260,7 @@ class A3C_FF(object):
     return action
 
   def observe(self, s_t, r_t, terminal):
-    r_t = max(self.min_reward, min(self.max_reward, r_t))
-
-    self.prev_r[self.t] = r_t
-    self.prev_s[self.t] = s_t
+    self.prev_r[self.t] = max(self.min_reward, min(self.max_reward, r_t))
 
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
       r = {}
@@ -292,7 +298,6 @@ class A3C_FF(object):
       # 4. Copy weights of global_network to local_network
       self.networks[0].copy_from_global()
 
-      self.prev_s = {self.t: self.prev_s[self.t]}
       self.prev_r = {self.t: self.prev_r[self.t]}
 
       self.t_start = self.t
