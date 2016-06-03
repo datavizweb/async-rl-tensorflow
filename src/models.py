@@ -43,6 +43,7 @@ class A3C_FF(object):
     self.history_length = config.history_length
 
     self.prev_r = {}
+    self.prev_log_policy = {}
 
     self.s_t_shape = self.networks[0].s_t.get_shape().as_list()
     self.s_t_shape[0] = 1
@@ -80,6 +81,8 @@ class A3C_FF(object):
             tf.reduce_mean(self.networks[0].value_loss)))
         summaries.append(tf.scalar_summary('loss/policy_loss',
             tf.reduce_mean(self.networks[0].policy_loss)))
+        summaries.append(tf.scalar_summary('loss/total_loss',
+            tf.reduce_mean(self.networks[0].total_loss)))
 
         self.value_policy_summary = tf.merge_summary(summaries, 'policy_summary')
 
@@ -236,6 +239,7 @@ class A3C_FF(object):
 
   def reset_partial_graph(self):
     targets = [network.sampled_action for network in self.networks]
+    targets.extend([network.log_policy_of_sampled_action for network in self.networks])
     targets.extend([network.value for network in self.networks])
     targets.extend(self.add_accum_grads.values())
     targets.append(self.fake_apply_gradient)
@@ -245,6 +249,7 @@ class A3C_FF(object):
 
     inputs = [network.s_t for network in self.networks]
     inputs.extend([network.R for network in self.networks])
+    inputs.extend([network.true_log_policy for network in self.networks])
 
     self.partial_graph = self.sess.partial_run_setup(targets, inputs)
 
@@ -256,20 +261,26 @@ class A3C_FF(object):
     if self.t_start - self.t == 0:
       self.reset_partial_graph()
 
-    if random.random() < 0:
+    network_idx = self.t - self.t_start
+
+    action, log_policy = self.sess.partial_run(
+      self.partial_graph,
+      [
+        self.networks[network_idx].sampled_action,
+        self.networks[network_idx].log_policy_of_sampled_action,
+      ],
+      {
+        self.networks[network_idx].s_t: [s_t]
+      }
+    )
+    action, log_policy = action[0], log_policy[0]
+
+    if random.random() < ep:
       action = random.randrange(self.env.action_size)
-    else:
-      network_idx = self.t - self.t_start
-      action = self.sess.partial_run(
-          self.partial_graph,
-          [
-            self.networks[network_idx].sampled_action,
-          ],
-          {
-            self.networks[network_idx].s_t: [s_t]
-          }
-      )[0]
+
+    self.prev_log_policy[self.t] = log_policy
     self.t += 1
+
     return action
 
   def observe(self, s_t, r_t, terminal):
@@ -288,10 +299,15 @@ class A3C_FF(object):
 
       for t in range(self.t - 1, self.t_start - 1, -1):
         r[t] = self.prev_r[t] + self.gamma * r[t + 1]
+      print r
 
       data = {}
       data.update({
         self.networks[t].R: [r[t + self.t_start]] for t in range(len(self.prev_r) - 1)
+      })
+      data.update({
+        self.networks[t].true_log_policy:
+          [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
 
       # 1. Update accumulated gradients

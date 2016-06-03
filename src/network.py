@@ -67,10 +67,11 @@ class Network(object):
 
     with tf.variable_scope('optim'):
       self.R = tf.placeholder('float32', [None], name='target_reward')
+      self.true_log_policy = tf.placeholder('float32', [None], name='true_action')
 
       # TODO: equation on paper and codes of other implementations are different
       with tf.variable_scope('policy_loss'):
-        self.policy_loss = -self.log_policy_of_sampled_action \
+        self.policy_loss = - self.true_log_policy \
             * (self.R - self.value) - beta * self.policy_entropy
 
       with tf.variable_scope('value_loss'):
