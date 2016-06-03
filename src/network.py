@@ -45,16 +45,21 @@ class Network(object):
       # 512 -> action_size
       self.policy_logits, self.w['p_w'], self.w['p_b'] = linear(self.l4, action_size, name='linear')
 
-      self.policy = tf.nn.softmax(self.policy_logits, name='pi')
-      self.log_policy = tf.log(tf.nn.softmax(self.policy_logits))
-      self.policy_entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
+      with tf.variable_scope('policy'):
+        self.policy = tf.nn.softmax(self.policy_logits, name='pi')
+      with tf.variable_scope('log_policy'):
+        self.log_policy = tf.log(self.policy)
+      with tf.variable_scope('policy_entropy'):
+        self.policy_entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
 
-      self.pred_action = tf.argmax(self.policy, dimension=1)
+      with tf.variable_scope('pred_action'):
+        self.pred_action = tf.argmax(self.policy, dimension=1)
 
-      self.sampled_action = batch_sample(self.policy)
-      sampled_action_one_hot = tf.one_hot(self.sampled_action, action_size, 1., 0.)
+        self.sampled_action = batch_sample(self.policy)
+        sampled_action_one_hot = tf.one_hot(self.sampled_action, action_size, 1., 0.)
 
-      self.log_policy_of_sampled_action = tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
+      with tf.variable_scope('log_policy_of_action'):
+        self.log_policy_of_sampled_action = tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
 
     with tf.variable_scope('value'):
       # 512 -> 1
@@ -63,14 +68,16 @@ class Network(object):
     with tf.variable_scope('optim'):
       self.R = tf.placeholder('float32', [None], name='target_reward')
 
-      self.true_log_policy = tf.placeholder('float32', [None], name='true_action')
-
       # TODO: equation on paper and codes of other implementations are different
-      self.policy_loss = self.true_log_policy \
-          * (self.R - self.value + beta * self.policy_entropy)
-      self.value_loss = tf.pow(self.R - self.value, 2)
+      with tf.variable_scope('policy_loss'):
+        self.policy_loss = -self.log_policy_of_sampled_action \
+            * (self.R - self.value) - beta * self.policy_entropy
 
-      self.total_loss = self.policy_loss + self.value_loss
+      with tf.variable_scope('value_loss'):
+        self.value_loss = tf.pow(self.R - self.value, 2)
+
+      with tf.variable_scope('total_loss'):
+        self.total_loss = self.policy_loss + self.value_loss
 
     if global_network != None:
       with tf.variable_scope('copy_from_target'):

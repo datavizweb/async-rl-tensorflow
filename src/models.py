@@ -35,6 +35,7 @@ class A3C_FF(object):
     self.gamma = config.gamma
     self.max_reward = config.max_reward
     self.min_reward = config.min_reward
+    self.max_grad_norm = config.max_grad_norm
 
     self.data_format = config.data_format
     self.screen_height = config.screen_height
@@ -42,7 +43,6 @@ class A3C_FF(object):
     self.history_length = config.history_length
 
     self.prev_r = {}
-    self.prev_log_policy = {}
 
     self.s_t_shape = self.networks[0].s_t.get_shape().as_list()
     self.s_t_shape[0] = 1
@@ -74,7 +74,12 @@ class A3C_FF(object):
         avg_policy = tf.reduce_mean(self.networks[0].policy, 0)
         for idx in range(self.env.action_size):
           summaries.append(tf.scalar_summary('policy/%s' % idx, avg_policy[idx]))
-        summaries.append(tf.scalar_summary('policy/entropy', tf.reduce_mean(self.networks[0].policy_entropy)))
+        summaries.append(tf.scalar_summary('policy/entropy',
+            tf.reduce_mean(self.networks[0].policy_entropy)))
+        summaries.append(tf.scalar_summary('loss/value_loss',
+            tf.reduce_mean(self.networks[0].value_loss)))
+        summaries.append(tf.scalar_summary('loss/policy_loss',
+            tf.reduce_mean(self.networks[0].policy_loss)))
 
         self.value_policy_summary = tf.merge_summary(summaries, 'policy_summary')
 
@@ -206,7 +211,7 @@ class A3C_FF(object):
                 tf.zeros(shape), trainable=False, name=name)
 
             global_v = global_var[re.sub(r'.*\/A3C_\d+\/', '', var.name)]
-            new_grads_and_vars.append((self.accum_grads[name].ref(), global_v))
+            new_grads_and_vars.append((tf.clip_by_norm(self.accum_grads[name].ref(), self.max_grad_norm), global_v))
 
             reset_accum_grads.append(self.accum_grads[name].assign(tf.zeros(shape)))
 
@@ -231,7 +236,6 @@ class A3C_FF(object):
 
   def reset_partial_graph(self):
     targets = [network.sampled_action for network in self.networks]
-    targets.extend([network.log_policy_of_sampled_action for network in self.networks])
     targets.extend([network.value for network in self.networks])
     targets.extend(self.add_accum_grads.values())
     targets.append(self.fake_apply_gradient)
@@ -241,7 +245,6 @@ class A3C_FF(object):
 
     inputs = [network.s_t for network in self.networks]
     inputs.extend([network.R for network in self.networks])
-    inputs.extend([network.true_log_policy for network in self.networks])
 
     self.partial_graph = self.sess.partial_run_setup(targets, inputs)
 
@@ -257,21 +260,16 @@ class A3C_FF(object):
       action = random.randrange(self.env.action_size)
     else:
       network_idx = self.t - self.t_start
-      action, log_policy = self.sess.partial_run(
+      action = self.sess.partial_run(
           self.partial_graph,
           [
             self.networks[network_idx].sampled_action,
-            self.networks[network_idx].log_policy_of_sampled_action,
           ],
           {
             self.networks[network_idx].s_t: [s_t]
           }
-      )
-      action, log_policy = action[0], log_policy[0]
-
-    self.prev_log_policy[self.t] = action
+      )[0]
     self.t += 1
-
     return action
 
   def observe(self, s_t, r_t, terminal):
@@ -294,11 +292,6 @@ class A3C_FF(object):
       data = {}
       data.update({
         self.networks[t].R: [r[t + self.t_start]] for t in range(len(self.prev_r) - 1)
-      })
-
-      data.update({
-        self.networks[t].true_log_policy:
-          [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
 
       # 1. Update accumulated gradients
