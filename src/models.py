@@ -333,7 +333,9 @@ class A3C_FF(object):
       self.t_start = self.t
 
   def inject_summary(self, tag_dict):
-    summary_str_lists = self.sess.run([self.summary_ops[tag] for tag in tag_dict.keys()], {
+    summary_str_lists = self.sess.run(
+        self.networks[0].filter_summaries + [self.summary_ops[tag] for tag in tag_dict.keys()
+      ], {
       self.summary_placeholders[tag]: value for tag, value in tag_dict.items()
     })
     for summary_str in summary_str_lists:
