@@ -299,7 +299,6 @@ class A3C_FF(object):
 
       for t in range(self.t - 1, self.t_start - 1, -1):
         r[t] = self.prev_r[t] + self.gamma * r[t + 1]
-      print r
 
       data = {}
       data.update({

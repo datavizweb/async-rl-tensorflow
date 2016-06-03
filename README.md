@@ -22,9 +22,17 @@ First, install prerequisites with:
 
     $ pip install tqdm gym[all]
 
-To train a model for SpaceInvaders:
+To train a model for Breakout with GPU:
 
-    $ python main_thread.py --n_worker=12
+    $ python main_thread.py --n_worker=12 --env_name=Breakout-v0
+
+To train a model with CPU:
+
+    $ python main_thread.py --data_format=NHWC
+
+To test a model with rendering:
+
+    $ python main_thread.py --render=True
 
 
 ## Results
