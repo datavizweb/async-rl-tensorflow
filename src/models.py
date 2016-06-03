@@ -42,7 +42,7 @@ class A3C_FF(object):
     self.history_length = config.history_length
 
     self.prev_r = {}
-    self.prev_log_policy = {}
+    #self.prev_log_policy = {}
 
     self.s_t_shape = self.networks[0].s_t.get_shape().as_list()
     self.s_t_shape[0] = 1
@@ -51,6 +51,7 @@ class A3C_FF(object):
 
     # DEBUG
     self.prev_s = {}
+    self.prev_a = {}
 
     if self.worker_id == 0:
       with tf.variable_scope('summary'):
@@ -235,8 +236,9 @@ class A3C_FF(object):
       self.fake_apply_gradient = tf.constant(0)
 
   def reset_partial_graph(self):
-    targets = [network.sampled_action for network in self.networks]
-    targets.extend([network.log_policy_of_sampled_action for network in self.networks])
+    targets = [network.policy for network in self.networks]
+    #targets = [network.sampled_action for network in self.networks]
+    #targets.extend([network.log_policy_of_sampled_action for network in self.networks])
     targets.extend([network.value for network in self.networks])
     targets.extend(self.add_accum_grads.values())
     targets.append(self.fake_apply_gradient)
@@ -246,7 +248,7 @@ class A3C_FF(object):
 
     inputs = [network.s_t for network in self.networks]
     inputs.extend([network.R for network in self.networks])
-    inputs.extend([network.true_log_policy for network in self.networks])
+    inputs.extend([network.sampled_action for network in self.networks])
 
     self.partial_graph = self.sess.partial_run_setup(targets, inputs)
 
@@ -262,20 +264,26 @@ class A3C_FF(object):
       action = random.randrange(self.env.action_size)
     else:
       network_idx = self.t - self.t_start
-      action, log_policy = self.sess.partial_run(
+      #action, log_policy = self.sess.partial_run(
+      policy = self.sess.partial_run(
           self.partial_graph,
           [
-            self.networks[network_idx].sampled_action,
-            self.networks[network_idx].log_policy_of_sampled_action,
+            self.networks[network_idx].policy,
+            #self.networks[network_idx].sampled_action,
+            #self.networks[network_idx].log_policy_of_sampled_action,
           ],
           {
             self.networks[network_idx].s_t: [s_t]
           }
       )
-      action, log_policy = action[0], log_policy[0]
+      #action, log_policy = action[0], log_policy[0]
+      action = np.argmax(np.random.uniform(0, 1, [6]) - policy[0][0])
 
-    self.prev_log_policy[self.t] = log_policy
+    #self.prev_log_policy[self.t] = log_policy
     self.t += 1
+
+    # DEBUG
+    self.prev_a[self.t] = action
 
     return action
 
@@ -304,9 +312,13 @@ class A3C_FF(object):
         self.networks[t].R: [r[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
 
+      #data.update({
+      #  self.networks[t].true_log_policy:
+      #    [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
+      #})
       data.update({
-        self.networks[t].true_log_policy:
-          [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
+        self.networks[t].sampled_action:
+          [self.prev_a[t + self.t_start + 1]] for t in range(len(self.prev_r) - 1)
       })
 
       # DEBUG
@@ -341,6 +353,10 @@ class A3C_FF(object):
         print self.t, "v, r: ", i, j
       print self.t, "V_loss", np.sum(value_losses)
       print self.t, "P_loss", np.sum(policy_losses)
+      print
+      print self.t, "w_l1", self.sess.run(self.networks[0].w['l1_w'])[4][4][1][:5]
+      print self.t, "q_l1", self.sess.run(self.networks[0].w['q_w'])[:5]
+      print self.t, "p_l1", self.sess.run(self.networks[0].w['p_w'])[:5]
       print
 
       # 1. Update accumulated gradients
@@ -384,7 +400,12 @@ class A3C_FF(object):
         print self.t, "v, r: ", i, j
       print self.t, "V_loss", np.sum(value_losses)
       print self.t, "P_loss", np.sum(policy_losses)
+      print self.t, "w_l1", self.sess.run(self.networks[0].w['l1_w'])[4][4][1][:5]
+      print self.t, "q_l1", self.sess.run(self.networks[0].w['q_w'])[:5]
+      print self.t, "p_l1", self.sess.run(self.networks[0].w['p_w'])[:5]
       print
+
+      import ipdb; ipdb.set_trace() 
 
       # 4. Copy weights of global_network to local_network
       self.networks[0].copy_from_global()
