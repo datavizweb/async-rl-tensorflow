@@ -76,11 +76,11 @@ class Network(object):
 
       # TODO: equation on paper and codes of other implementations are different
       with tf.variable_scope('policy_loss'):
-        self.policy_loss = - self.true_log_policy \
-            * (self.R - self.value) - beta * self.policy_entropy
+        self.policy_loss = -(self.true_log_policy \
+            * (self.R - self.value) + beta * self.policy_entropy)
 
       with tf.variable_scope('value_loss'):
-        self.value_loss = tf.pow(self.R - self.value, 2)
+        self.value_loss = tf.pow(self.R - self.value, 2) / 2
 
       with tf.variable_scope('total_loss'):
         self.total_loss = self.policy_loss + self.value_loss
