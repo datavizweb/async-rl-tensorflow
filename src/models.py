@@ -44,7 +44,6 @@ class A3C_FF(object):
     self.history_length = config.history_length
 
     self.prev_r = {}
-    self.prev_log_policy = {}
 
     self.s_t_shape = self.networks[0].s_t.get_shape().as_list()
     self.s_t_shape[0] = 1
@@ -244,7 +243,6 @@ class A3C_FF(object):
 
   def reset_partial_graph(self):
     targets = [network.sampled_action for network in self.networks]
-    targets.extend([network.log_policy_of_sampled_action for network in self.networks])
     targets.extend([network.value for network in self.networks])
     targets.extend(self.add_accum_grads.values())
     targets.append(self.fake_apply_gradient)
@@ -254,7 +252,6 @@ class A3C_FF(object):
 
     inputs = [network.s_t for network in self.networks]
     inputs.extend([network.R for network in self.networks])
-    inputs.extend([network.true_log_policy for network in self.networks])
 
     self.partial_graph = self.sess.partial_run_setup(targets, inputs)
 
@@ -264,19 +261,16 @@ class A3C_FF(object):
 
     network_idx = self.t - self.t_start
 
-    action, log_policy = self.sess.partial_run(
+    action = self.sess.partial_run(
       self.partial_graph,
       [
         self.networks[network_idx].sampled_action,
-        self.networks[network_idx].log_policy_of_sampled_action,
       ],
       {
         self.networks[network_idx].s_t: [s_t]
       }
     )
-    action, log_policy = action[0], log_policy[0]
-
-    self.prev_log_policy[self.t] = log_policy
+    action = action[0]
     self.t += 1
 
     return action
@@ -301,10 +295,6 @@ class A3C_FF(object):
       data = {}
       data.update({
         self.networks[t].R: [r[t + self.t_start]] for t in range(len(self.prev_r) - 1)
-      })
-      data.update({
-        self.networks[t].true_log_policy:
-          [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
 
       # 1. Update accumulated gradients

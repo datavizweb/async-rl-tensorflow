@@ -64,7 +64,7 @@ class Network(object):
         sampled_action_one_hot = tf.one_hot(self.sampled_action, action_size, 1., 0.)
 
       with tf.variable_scope('log_policy_of_action'):
-        self.log_policy_of_sampled_action = -tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
+        self.log_policy_of_sampled_action = tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
 
     with tf.variable_scope('value'):
       # 512 -> 1
@@ -72,11 +72,10 @@ class Network(object):
 
     with tf.variable_scope('optim'):
       self.R = tf.placeholder('float32', [None], name='target_reward')
-      self.true_log_policy = tf.placeholder('float32', [None], name='true_action')
 
       # TODO: equation on paper and codes of other implementations are different
       with tf.variable_scope('policy_loss'):
-        self.policy_loss = -(self.true_log_policy \
+        self.policy_loss = -(self.log_policy_of_sampled_action \
             * (self.R - self.value) + beta * self.policy_entropy)
 
       with tf.variable_scope('value_loss'):
