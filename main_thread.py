@@ -77,7 +77,15 @@ def main(_):
                 global_optim=global_optim)
 
     global_network = make_network(sess, name='A3C_global')
-    global_optim = tf.train.RMSPropOptimizer(config.learning_rate,
+
+    learning_rate_op = tf.Variable(config.learning_rate, trainable=False, name='learning_rate')
+    learning_rate_input  = tf.tf.placeholder('float', None, name='learning_rate_input')
+    learning_rate_assign_op = learning_rate_op.assign(learning_rate_input)
+
+    def assign_learning_rate_op(lr):
+      sess.run(learning_rate_assign_op, {learning_rate_input: lr}
+
+    global_optim = tf.train.RMSPropOptimizer(learning_rate_op,
                                              config.decay,
                                              config.momentum,
                                              config.epsilon)
@@ -104,7 +112,8 @@ def main(_):
         env = Environment(config.env_name, config.n_action_repeat, config.max_random_start,
                           config.history_length, config.data_format, config.display,
                           config.screen_height, config.screen_width)
-      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, env, global_network, global_optim, config)
+      A3C_FFs[worker_id] = A3C_FF(worker_id, sess, networks, env, 
+                                  global_network, global_optim, config, learning_rate_op)
 
     tf.initialize_all_variables().run()
 
@@ -126,7 +135,8 @@ def main(_):
       model = A3C_FFs[worker_id]
 
       if worker_id == 0:
-        model.train_with_log(global_t, saver, writer, checkpoint_dir, assign_global_t_op)
+        model.train_with_log(global_t, saver, writer, checkpoint_dir,
+                             assign_learning_rate_op, assign_global_t_op)
       else:
         model.train(global_t)
 

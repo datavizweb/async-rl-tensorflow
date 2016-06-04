@@ -10,7 +10,7 @@ expand = lambda s_t: np.expand_dims(s_t, 0)
 
 class A3C_FF(object):
   def __init__(self, worker_id, sess, local_networks, local_env,
-               global_network, global_optim, config):
+               global_network, global_optim, config, learning_rate_op):
     self.sess = sess
     self.worker_id = worker_id
     self.writer = None
@@ -32,6 +32,7 @@ class A3C_FF(object):
     self.ep_end = config.ep_end
     self.ep_end_t = config.ep_end_t
 
+    self.learning_rate = config.learning_rate
     self.gamma = config.gamma
     self.max_reward = config.max_reward
     self.min_reward = config.min_reward
@@ -83,6 +84,8 @@ class A3C_FF(object):
             tf.reduce_mean(self.networks[0].policy_loss)))
         summaries.append(tf.scalar_summary('loss/total_loss',
             tf.reduce_mean(self.networks[0].total_loss)))
+        summaries.append(tf.scalar_summary('train/learning_rate',
+            learning_rate_op))
 
         self.value_policy_summary = tf.merge_summary(summaries, 'policy_summary')
 
@@ -110,7 +113,8 @@ class A3C_FF(object):
 
     logger.info("loop : %2.2f sec" % (time.time() - start_time))
 
-  def train_with_log(self, global_t, saver, writer, checkpoint_dir, assign_global_t_op):
+  def train_with_log(self, global_t, saver, writer, checkpoint_dir,
+                     assign_learning_rate_op, assign_global_t_op):
     from tqdm import tqdm
 
     self.writer = writer
@@ -139,6 +143,7 @@ class A3C_FF(object):
       self.observe(state, reward, terminal)
 
       global_t[0] += 1
+      assign_learning_rate_op((self.t_train_max - global_t[0] + 1) / self.t_train_max * self.learning_rate)
 
       if terminal:
         self.env.new_random_game()
@@ -254,10 +259,6 @@ class A3C_FF(object):
     self.partial_graph = self.sess.partial_run_setup(targets, inputs)
 
   def predict(self, s_t, test_ep=None):
-    ep = test_ep or (self.ep_end +
-        max(0., (self.ep_start - self.ep_end)
-          * (self.ep_end_t - self.t) / self.ep_end_t))
-
     if self.t_start - self.t == 0:
       self.reset_partial_graph()
 
@@ -274,9 +275,6 @@ class A3C_FF(object):
       }
     )
     action, log_policy = action[0], log_policy[0]
-
-    if random.random() < ep:
-      action = random.randrange(self.env.action_size)
 
     self.prev_log_policy[self.t] = log_policy
     self.t += 1
