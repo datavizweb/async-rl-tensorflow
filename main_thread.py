@@ -79,11 +79,11 @@ def main(_):
     global_network = make_network(sess, name='A3C_global')
 
     learning_rate_op = tf.Variable(config.learning_rate, trainable=False, name='learning_rate')
-    learning_rate_input  = tf.tf.placeholder('float', None, name='learning_rate_input')
+    learning_rate_input  = tf.placeholder('float', None, name='learning_rate_input')
     learning_rate_assign_op = learning_rate_op.assign(learning_rate_input)
 
     def assign_learning_rate_op(lr):
-      sess.run(learning_rate_assign_op, {learning_rate_input: lr}
+      sess.run(learning_rate_assign_op, {learning_rate_input: lr})
 
     global_optim = tf.train.RMSPropOptimizer(learning_rate_op,
                                              config.decay,
