@@ -60,13 +60,11 @@ class Network(object):
         self.policy_entropy = -tf.reduce_sum(self.policy * self.log_policy, 1)
 
       with tf.variable_scope('pred_action'):
-        self.pred_action = tf.argmax(self.policy, dimension=1)
-
         self.sampled_action = batch_sample(self.policy)
         sampled_action_one_hot = tf.one_hot(self.sampled_action, action_size, 1., 0.)
 
       with tf.variable_scope('log_policy_of_action'):
-        self.log_policy_of_sampled_action = tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
+        self.log_policy_of_sampled_action = -tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
 
     with tf.variable_scope('value'):
       # 512 -> 1
