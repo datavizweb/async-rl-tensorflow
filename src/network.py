@@ -45,9 +45,6 @@ class Network(object):
       shape = w.get_shape().as_list()
       return tf.transpose(tf.reshape(w, shape[:2] + [1, -1]), [3, 0, 1, 2])
 
-    self.filter_summaries = []
-    self.filter_summaries.append(tf.image_summary('l1', reshape_w(self.w['l1_w']), max_images=86))
-
     with tf.variable_scope('policy'):
       # 512 -> action_size
       self.policy_logits, self.w['p_w'], self.w['p_b'] = linear(self.l4, action_size, name='linear')

@@ -33,6 +33,8 @@ class A3C_FF(object):
     self.ep_end_t = config.ep_end_t
 
     self.learning_rate = config.learning_rate
+    self.learning_rate_op = learning_rate_op
+
     self.gamma = config.gamma
     self.max_reward = config.max_reward
     self.min_reward = config.min_reward
@@ -113,8 +115,7 @@ class A3C_FF(object):
 
     logger.info("loop : %2.2f sec" % (time.time() - start_time))
 
-  def train_with_log(self, global_t, saver, writer, checkpoint_dir,
-                     assign_learning_rate_op, assign_global_t_op):
+  def train_with_log(self, global_t, saver, writer, checkpoint_dir, assign_global_t_op):
     from tqdm import tqdm
 
     self.writer = writer
@@ -143,7 +144,6 @@ class A3C_FF(object):
       self.observe(state, reward, terminal)
 
       global_t[0] += 1
-      assign_learning_rate_op((self.t_train_max - global_t[0] + 1) / self.t_train_max * self.learning_rate)
 
       if terminal:
         self.env.new_random_game()
@@ -306,6 +306,9 @@ class A3C_FF(object):
         self.networks[t].true_log_policy:
           [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
+      data.update({
+        self.learning_rate_op: self.t_train_max - self.global_t[0] + 1) / self.t_train_max * self.learning_rate
+      })
 
       # 1. Update accumulated gradients
       if not self.writer:
@@ -331,9 +334,9 @@ class A3C_FF(object):
       self.t_start = self.t
 
   def inject_summary(self, tag_dict):
-    summary_str_lists = self.sess.run(
-        self.networks[0].filter_summaries + [self.summary_ops[tag] for tag in tag_dict.keys()
-      ], {
+    summary_str_lists = self.sess.run([
+      self.summary_ops[tag] for tag in tag_dict.keys()
+    ], {
       self.summary_placeholders[tag]: value for tag, value in tag_dict.items()
     })
     for summary_str in summary_str_lists:
