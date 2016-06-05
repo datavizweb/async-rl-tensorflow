@@ -59,9 +59,8 @@ class Network(object):
       with tf.variable_scope('pred_action'):
         self.sampled_action = batch_sample(self.policy)
         sampled_action_one_hot = tf.one_hot(self.sampled_action, action_size, 1., 0.)
-
       with tf.variable_scope('log_policy_of_action'):
-        self.log_policy_of_sampled_action = -tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
+        self.log_policy_of_sampled_action = tf.reduce_sum(self.log_policy * sampled_action_one_hot, 1)
 
     with tf.variable_scope('value'):
       # 512 -> 1
@@ -74,7 +73,7 @@ class Network(object):
       # TODO: equation on paper and codes of other implementations are different
       with tf.variable_scope('policy_loss'):
         self.policy_loss = -(self.true_log_policy \
-            * (self.R - self.value) + beta * self.policy_entropy)
+            * (self.R - self.value)) - beta * self.policy_entropy
 
       with tf.variable_scope('value_loss'):
         self.value_loss = tf.pow(self.R - self.value, 2) / 2
@@ -91,9 +90,6 @@ class Network(object):
           copy_ops.append(copy_op)
 
         self.global_copy_op = tf.group(*copy_ops, name='global_copy_op')
-
-      # Add accumulated gradient ops for n-step Q-learning
-      accum_grads, accum_grad_adds, reset_grads = [], [], []
 
   def copy_from_global(self):
     self.sess.run(self.global_copy_op)

@@ -76,10 +76,9 @@ def main(_):
                 global_network=global_network,
                 global_optim=global_optim)
 
-    global_network = make_network(sess, name='A3C_global')
-
     learning_rate_op  = tf.placeholder('float', None, name='learning_rate')
 
+    global_network = make_network(sess, name='A3C_global')
     global_optim = tf.train.RMSPropOptimizer(learning_rate_op,
                                              config.decay,
                                              config.momentum,

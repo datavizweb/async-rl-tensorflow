@@ -307,7 +307,8 @@ class A3C_FF(object):
           [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
       data.update({
-        self.learning_rate_op: self.t_train_max - self.global_t[0] + 1) / self.t_train_max * self.learning_rate
+        self.learning_rate_op: \
+            (self.t_train_max - self.global_t[0] + 1) / self.t_train_max * self.learning_rate
       })
 
       # 1. Update accumulated gradients
