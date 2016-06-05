@@ -92,6 +92,8 @@ class A3C_FF(object):
         self.value_policy_summary = tf.merge_summary(summaries, 'policy_summary')
 
   def train(self, global_t):
+    self.global_t = global_t
+
     # 0. Prepare training
     state, reward, terminal = self.env.new_random_game()
     self.observe(state, reward, terminal)
@@ -255,6 +257,7 @@ class A3C_FF(object):
     inputs = [network.s_t for network in self.networks]
     inputs.extend([network.R for network in self.networks])
     inputs.extend([network.true_log_policy for network in self.networks])
+    inputs.append(self.learning_rate_op)
 
     self.partial_graph = self.sess.partial_run_setup(targets, inputs)
 
@@ -271,7 +274,7 @@ class A3C_FF(object):
         self.networks[network_idx].log_policy_of_sampled_action,
       ],
       {
-        self.networks[network_idx].s_t: [s_t]
+        self.networks[network_idx].s_t: [s_t],
       }
     )
     action, log_policy = action[0], log_policy[0]
@@ -286,6 +289,8 @@ class A3C_FF(object):
 
     if (terminal and self.t_start < self.t) or self.t - self.t_start == self.t_max:
       r = {}
+
+      lr = (self.t_train_max - self.global_t[0] + 1) / self.t_train_max * self.learning_rate
 
       if terminal:
         r[self.t] = 0.
@@ -307,8 +312,7 @@ class A3C_FF(object):
           [self.prev_log_policy[t + self.t_start]] for t in range(len(self.prev_r) - 1)
       })
       data.update({
-        self.learning_rate_op: \
-            (self.t_train_max - self.global_t[0] + 1) / self.t_train_max * self.learning_rate
+        self.learning_rate_op: lr,
       })
 
       # 1. Update accumulated gradients
@@ -323,7 +327,9 @@ class A3C_FF(object):
         self.writer.add_summary(summary_str, self.global_t[0])
 
       # 2. Update global w with accumulated gradients
-      self.sess.run(self.apply_gradient)
+      self.sess.run(self.apply_gradient, {
+        self.learning_rate_op: lr,
+      })
 
       # 3. Reset accumulated gradients to zero
       self.sess.run(self.reset_accum_grad)
@@ -333,6 +339,8 @@ class A3C_FF(object):
 
       self.prev_r = {self.t: self.prev_r[self.t]}
       self.t_start = self.t
+
+      del self.partial_graph
 
   def inject_summary(self, tag_dict):
     summary_str_lists = self.sess.run([
