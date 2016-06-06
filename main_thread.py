@@ -75,7 +75,8 @@ def main(_):
                 config.screen_width,
                 action_size,
                 global_network=global_network,
-                global_optim=global_optim)
+                global_optim=global_optim,
+                DQN_type='nips')
 
     learning_rate_op  = tf.placeholder('float', None, name='learning_rate')
 

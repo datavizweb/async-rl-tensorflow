@@ -8,7 +8,7 @@ class Network(object):
                screen_height, screen_width,
                action_size, activation_fn=tf.nn.relu,
                initializer=tf.truncated_normal_initializer(0, 0.02), 
-               gamma=0.01, beta=0.0, global_network=None, global_optim=None):
+               gamma=0.01, beta=0.0, global_network=None, global_optim=None, DQN_type=''):
     self.sess = sess
 
     if data_format == 'NHWC':
