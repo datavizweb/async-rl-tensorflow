@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 from threading import Thread
 
-from src.models import A3C_FF
+from src.agent import A3C_FF
 from src.network import Network
 from src.environment import Environment
 from src.utils import timeit, get_model_dir, range
@@ -14,6 +14,7 @@ from src.utils import timeit, get_model_dir, range
 flags = tf.app.flags
 
 # Deep q Network
+flags.DEFINE_string('DQN_type', 'nips', 'The type of DQN in A3C model. [nature, nips]')
 flags.DEFINE_string('data_format', 'NCHW', 'The format of convolutional filter. NHWC for CPU and NCHW for GPU')
 flags.DEFINE_string('ep_start', 1., 'The value of epsilon at start in e-greedy')
 flags.DEFINE_string('ep_end', 0.1, 'The value of epsilnon at the end in e-greedy')
