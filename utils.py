@@ -8,7 +8,7 @@ from logging import getLogger
 logger = getLogger(__name__)
 pp = pprint.PrettyPrinter().pprint
 
-def get_model_dir(config):
+def get_model_dir(config, exceptions=None):
   attrs = config.__dict__['__flags']
   pp(attrs)
 
@@ -20,19 +20,10 @@ def get_model_dir(config):
   names = [config.env_name]
   for key in keys:
     # Only use useful flags
-    if key not in ['log_level', 'max_random_start', 'n_worker', 'random_seed', 't_save', 't_train']:
+    if key not in exceptions:
       names.append("%s=%s" % (key, ",".join([str(i) for i in attrs[key]])
           if type(attrs[key]) == list else attrs[key]))
-  return os.path.join(*names) + '/'
-
-try:
-  import cv2
-  imresize = cv2.resize
-  imwrite = cv2.imwrite
-except:
-  import scipy.misc
-  imresize = scipy.misc.imresize
-  imwrite = scipy.misc.imsave
+  return os.path.join('checkpoints', *names) + '/'
 
 def timeit(f):
   def timed(*args, **kwargs):

@@ -1,15 +1,22 @@
-# Asynchronous Methods for Deep Reinforcement Learning
+# Deep Reinforcement Learning in TensorFlow
 
-Tensorflow implementation of [Asynchronous Methods for Deep Reinforcement Learning](http://arxiv.org/abs/1602.01783).
+TensorFlow implementation of Deep Reinforcement Learning papers. This implementation contains:
 
-![model](assets/a3c.png)
+[1] [Playing Atari with Deep Reinforcement Learning](http://arxiv.org/abs/1312.5602)  
+[2] [Human-Level Control through Deep Reinforcement Learning](http://home.uchicago.edu/~arij/journalclub/papers/2015_Mnih_et_al.pdf)  
+[3] [Deep Reinforcement Learning with Double Q-learning](http://arxiv.org/abs/1509.06461)  
+[4] [Dueling Network Architectures for Deep Reinforcement Learning](http://arxiv.org/abs/1511.06581)  
+[5] [Prioritized Experience Replay](http://arxiv.org/pdf/1511.05952v3.pdf) (in progress)  
+[6] [Deep Exploration via Bootstrapped DQN](http://arxiv.org/abs/1602.04621) (in progress)  
+[7] [Asynchronous Methods for Deep Reinforcement Learning](http://arxiv.org/abs/1602.01783) (in progress)  
+[8] [Continuous Deep q-Learning with Model-based Acceleration](http://arxiv.org/abs/1603.00748) (in progress)  
 
-Our implementation use a GPU to overcome the bottleneck caused by GIL (Global Interpreter Lock) of Python.
+**Currently training of CNN model with Atari environment doesn't work yet**
 
 
 ## Requirements
 
-- Python 2.7 or Python 3.3+
+- Python 2.7
 - [gym](https://github.com/openai/gym)
 - [tqdm](https://github.com/tqdm/tqdm)
 - [OpenCV2](http://opencv.org/) or [Scipy](https://www.scipy.org/)
@@ -20,33 +27,42 @@ Our implementation use a GPU to overcome the bottleneck caused by GIL (Global In
 
 First, install prerequisites with:
 
-    $ pip install tqdm gym[all]
+    $ pip install -U gym[all] tqdm scipy
 
-To train a model for Breakout with GPU:
+Train with DQN model described in [[1]](#deep-reinforcement-learning-in-tensorflow) without gpu:
 
-    $ python main_thread.py --n_worker=12 --env_name=Breakout-v0
+    $ python main.py --network_header_type=nips --env_name=Breakout-v0 --use_gpu=False
 
-To train a model with CPU:
+Train with DQN model described in [[2]](#deep-reinforcement-learning-in-tensorflow):
 
-    $ python main_thread.py --data_format=NHWC
+    $ python main.py --network_header_type=nature --env_name=Breakout-v0
 
-To test a model with rendering:
+Train with Double DQN model described in [[3]](#deep-reinforcement-learning-in-tensorflow):
 
-    $ python main_thread.py --render=True
+    $ python main.py --double_q=True --env_name=Breakout-v0
+
+Train with Deuling network with Double Q-learning described in [[4]](#deep-reinforcement-learning-in-tensorflow):
+
+    $ python main.py --double_q=True --network_output_type=dueling --env_name=Breakout-v0
+
+Train with MLP model described in [[4]](#deep-reinforcement-learning-in-tensorflow) with corridor environment (useful for debugging):
+
+    $ python main.py --network_header_type=mlp --network_output_type=normal --observation_dims='[16]' --env_name=CorridorSmall-v5 --t_learn_start=0.1 --learning_rate_decay_step=0.1 --history_length=1 --n_action_repeat=1 --t_ep_end=25 --display=True
+    $ python main.py --network_header_type=mlp --network_output_type=normal --double_q=True --observation_dims='[16]' --env_name=CorridorSmall-v5 --t_learn_start=0.1 --learning_rate_decay_step=0.1 --history_length=1 --n_action_repeat=1 --t_ep_end=25 --display=True
+    $ python main.py --network_header_type=mlp --network_output_type=dueling --observation_dims='[16]' --env_name=CorridorSmall-v5 --t_learn_start=0.1 --learning_rate_decay_step=0.1 --history_length=1 --n_action_repeat=1 --t_ep_end=25 --display=True
+    $ python main.py --network_header_type=mlp --network_output_type=dueling --double_q=True --observation_dims='[16]' --env_name=CorridorSmall-v5 --t_learn_start=0.1 --learning_rate_decay_step=0.1 --history_length=1 --n_action_repeat=1 --t_ep_end=25 --display=True
 
 
 ## Results
+
+Result of `Corridor-v5` in [[4]](#deep-reinforcement-learning-in-tensorflow) for DQN (purple), DDQN (red), Dueling DQN (green), Dueling DDQN (blue).
+
+![model](assets/corridor_result.png)
 
 (in progress)
 
 
 ## References
 
-- [async_rl](https://github.com/muupan/async-rl)
-- [async_deep_reinforce](https://github.com/miyosuda/async_deep_reinforce)
-- [asynchronous computation in TensorFlow](http://stackoverflow.com/questions/34419645/asynchronous-computation-in-tensorflow)
-
-
-## License
-
-MIT License.
+- [DQN-tensorflow](https://github.com/devsisters/DQN-tensorflow)
+- [DeepMind's code](https://sites.google.com/a/deepmind.com/dqn/)
