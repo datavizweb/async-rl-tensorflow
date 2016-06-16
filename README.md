@@ -66,3 +66,8 @@ Result of `Corridor-v5` in [[4]](#deep-reinforcement-learning-in-tensorflow) for
 
 - [DQN-tensorflow](https://github.com/devsisters/DQN-tensorflow)
 - [DeepMind's code](https://sites.google.com/a/deepmind.com/dqn/)
+
+
+## Author
+
+Taehoon Kim / [@carpedm20](http://carpedm20.github.io/)

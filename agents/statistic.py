@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 
 class Statistic(object):
-  def __init__(self, sess, t_test, t_learn_start, model_dir, variables, max_to_keep=20):
+  def __init__(self, sess, env_name, t_test, t_learn_start, model_dir, variables, max_to_keep=20):
     self.sess = sess
     self.t_test = t_test
     self.t_learn_start = t_learn_start
@@ -21,9 +21,9 @@ class Statistic(object):
 
     with tf.variable_scope('summary'):
       scalar_summary_tags = [
-        'average/reward', 'average/loss', 'average/q',
-        'episode/max reward', 'episode/min reward', 'episode/avg reward',
-        'episode/num of game', 'training/learning_rate', 'training/epsilon',
+        'average.reward', 'average.loss', 'average.q',
+        'episode.max reward', 'episode.min reward', 'episode.avg reward',
+        'episode.num of game', 'training.learning_rate', 'training.epsilon',
       ]
 
       self.summary_placeholders = {}
@@ -31,13 +31,13 @@ class Statistic(object):
 
       for tag in scalar_summary_tags:
         self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
-        self.summary_ops[tag]  = tf.scalar_summary(tag, self.summary_placeholders[tag])
+        self.summary_ops[tag]  = tf.scalar_summary("%s/%s" % (env_name, tag), self.summary_placeholders[tag])
 
-      histogram_summary_tags = ['episode/rewards', 'episode/actions']
+      histogram_summary_tags = ['episode.rewards', 'episode.actions']
 
       for tag in histogram_summary_tags:
         self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
-        self.summary_ops[tag]  = tf.histogram_summary(tag, self.summary_placeholders[tag])
+        self.summary_ops[tag]  = tf.histogram_summary("%s/%s" % (env_name, tag), self.summary_placeholders[tag])
 
 
   def reset(self):
@@ -92,17 +92,17 @@ class Statistic(object):
           self.max_avg_ep_reward = max(self.max_avg_ep_reward, avg_ep_reward)
 
         self.inject_summary({
-            'average/q': avg_q,
-            'average/loss': avg_loss,
-            'average/reward': avg_reward,
-            'episode/max reward': max_ep_reward,
-            'episode/min reward': min_ep_reward,
-            'episode/avg reward': avg_ep_reward,
-            'episode/num of game': self.num_game,
-            'episode/actions': self.actions,
-            'episode/rewards': self.ep_rewards,
-            'training/learning_rate': learning_rate_op.eval(session=self.sess),
-            'training/epsilon': ep,
+            'average.q': avg_q,
+            'average.loss': avg_loss,
+            'average.reward': avg_reward,
+            'episode.max reward': max_ep_reward,
+            'episode.min reward': min_ep_reward,
+            'episode.avg reward': avg_ep_reward,
+            'episode.num of game': self.num_game,
+            'episode.actions': self.actions,
+            'episode.rewards': self.ep_rewards,
+            'training.learning_rate': learning_rate_op.eval(session=self.sess),
+            'training.epsilon': ep,
           }, t)
 
         self.reset()
