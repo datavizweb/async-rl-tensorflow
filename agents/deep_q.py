@@ -59,6 +59,9 @@ class DeepQ(Agent):
       if self.t % self.t_target_q_update_freq == self.t_target_q_update_freq - 1:
         self.update_target_q_network()
 
+    if self.env.display == True:
+      logger.info('r: %d, a: %d, t: %d' % (reward, action, terminal))
+
     return result
 
   def q_learning_minibatch(self):

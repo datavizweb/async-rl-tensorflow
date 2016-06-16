@@ -94,7 +94,8 @@ class Agent(object):
 
     self.stat.load_model()
     self.target_network.run_copy()
-    import ipdb; ipdb.set_trace() 
+
+    raw_input(" > Ready? :")
 
     if not self.env.display:
       gym_dir = '/tmp/%s-%s' % (self.env_name, get_time())
@@ -157,13 +158,13 @@ class Agent(object):
     s_t = s_t.reshape([1, 1] + self.observation_dims)
     s_t_plus_1 = s_t_plus_1.reshape([1, 1] + self.observation_dims)
 
-    action = [3]
+    action = [2]
     reward = [1]
-    terminal = [0]
+    terminal = [False]
 
     terminal = np.array(terminal) + 0.
-    max_q_t_plus_1 = self.target_network.calc_max_outputs(s_t_plus_1)
-    target_q_t = (1. - terminal) * self.discount_r * max_q_t_plus_1 + reward
+    q_t_plus_1 = self.target_network.calc_outputs(s_t_plus_1)
+    target_q_t = (1. - terminal) * self.discount_r * np.max(q_t_plus_1, 1) + reward
 
     _, q_t, a, loss = self.sess.run([
         self.optim, self.pred_network.outputs, self.pred_network.actions, self.loss
@@ -173,7 +174,10 @@ class Agent(object):
         self.pred_network.inputs: s_t,
       })
 
-    logger.info("q: %s, a: %d, l: %.2f" % (q_t, a, loss))
+    logger.info("q_1: %s, target_q: %s" % (q_t_plus_1, target_q_t))
+    logger.info("q_0: %s, a: %d, l: %.2f" % (q_t, a, loss))
+
+    #self.update_target_q_network()
 
   def update_target_q_network(self):
     assert self.target_network != None

@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 
 class Statistic(object):
-  def __init__(self, sess, env_name, t_test, t_learn_start, model_dir, variables, max_to_keep=20):
+  def __init__(self, sess, env_name, config_tag, t_test, t_learn_start, model_dir, variables, max_to_keep=20):
     self.sess = sess
     self.t_test = t_test
     self.t_learn_start = t_learn_start
@@ -31,7 +31,8 @@ class Statistic(object):
 
       for tag in scalar_summary_tags:
         self.summary_placeholders[tag] = tf.placeholder('float32', None, name=tag.replace(' ', '_'))
-        self.summary_ops[tag]  = tf.scalar_summary("%s/%s" % (env_name, tag), self.summary_placeholders[tag])
+        self.summary_ops[tag]  = tf.scalar_summary(
+            "%s%s/%s" % (env_name, ("_" + config_tag) if config_tag != '' else '', tag), self.summary_placeholders[tag])
 
       histogram_summary_tags = ['episode.rewards', 'episode.actions']
 
@@ -59,12 +60,11 @@ class Statistic(object):
       self.total_loss += loss
       self.total_reward += reward
 
+      self.ep_reward += reward
       if terminal:
         self.num_game += 1
         self.ep_rewards.append(self.ep_reward)
         self.ep_reward = 0.
-      else:
-        self.ep_reward += reward
 
       if is_update:
         self.update_count += 1

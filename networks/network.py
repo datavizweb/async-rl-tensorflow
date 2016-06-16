@@ -12,6 +12,7 @@ class Network(object):
       weights_initializer, biases_initializer, output_hidden_activation_fn, 
       output_activation_fn, trainable):
     if network_output_type == 'normal':
+      idx = 0
       for idx, hidden_size in enumerate(output_hidden_sizes):
         w_name, b_name = 'out_w_%d' % idx, 'out_b_%d' % idx
 

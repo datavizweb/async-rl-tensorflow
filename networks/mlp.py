@@ -17,7 +17,7 @@ class MLPSmall(Network):
                output_hidden_activation_fn=tf.nn.relu,
                output_activation_fn=None,
                hidden_sizes=[50, 50, 50],
-               output_hidden_sizes=[25],
+               output_hidden_sizes=[],
                value_hidden_sizes=[25],
                advantage_hidden_sizes=[25],
                network_output_type='dueling',

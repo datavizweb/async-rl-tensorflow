@@ -141,7 +141,7 @@ def main(_):
     else:
       raise ValueError('Unkown network_header_type: %s' % (conf.network_header_type))
 
-    stat = Statistic(sess, conf.env_name, conf.t_test, conf.t_learn_start, model_dir, pred_network.var.values())
+    stat = Statistic(sess, conf.env_name, conf.tag, conf.t_test, conf.t_learn_start, model_dir, pred_network.var.values())
     agent = TrainAgent(sess, pred_network, env, stat, conf, target_network=target_network)
 
     if conf.is_train:
