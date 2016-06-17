@@ -147,7 +147,7 @@ def main(_):
     if conf.is_train:
       agent.train(conf.t_train_max)
     else:
-      agent.play(0)
+      agent.play(conf.ep_end)
 
 if __name__ == '__main__':
   tf.app.run()

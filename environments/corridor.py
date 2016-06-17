@@ -91,7 +91,6 @@ class CorridorEnv(discrete.DiscreteEnv):
           rew = 1.0 if letter == 'A' \
               else 10.0 if letter == 'D' \
               else -1.0 if letter == 'H' \
-              else 1.0 if (newrow != row or newcol != col) and letter == 'F' \
               else 0.0
           li.append((1.0/3.0, newstate, rew, done))
 
