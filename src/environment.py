@@ -1,108 +1,106 @@
 import gym
 import random
-import logging
 import numpy as np
 
-from .utils import imresize, range
-
-logger = logging.getLogger(__name__)
+try:
+  import scipy.misc
+  imresize = scipy.misc.imresize
+  imwrite = scipy.misc.imsave
+except:
+  import cv2
+  imresize = cv2.resize
+  imwrite = cv2.imwrite
 
 class Environment(object):
-  def __init__(self, env_name, n_action_repeat, max_random_start,
-               history_length, data_format, display, screen_height=84, screen_width=84):
-    self.env = gym.make(env_name)
+  def __init__(self, config):
+    self.env = gym.make(config.env_name)
 
-    self.n_action_repeat = n_action_repeat
-    self.max_random_start = max_random_start
+    screen_width, screen_height, self.action_repeat, self.random_start = \
+        config.screen_width, config.screen_height, config.action_repeat, config.random_start
 
-    self.history_length = history_length
-    self.action_size = self.env.action_space.n
+    self.display = config.display
+    self.dims = (screen_width, screen_height)
 
-    self.display = display
-    self.data_format = data_format
-    self.screen_width = screen_width
-    self.screen_height = screen_height
-
-    if self.data_format == 'NHWC':
-      self.history = np.zeros(
-          [self.screen_height, self.screen_width, history_length], dtype=np.uint8)
-    elif self.data_format == 'NCHW':
-      self.history = np.zeros(
-          [self.history_length, self.screen_height, self.screen_width], dtype=np.uint8)
-    else:
-      raise ValueError("unknown data_format : %s" % self.data_format)
-
-    logger.info("Using %d actions : %s" % (self.action_size, ", ".join(self.env.get_action_meanings())))
+    self._screen = None
+    self.reward = 0
+    self.terminal = True
 
   def new_game(self, from_random_game=False):
-    self.history *= 0
-
-    screen = self.env.reset()
-    screen, reward, terminal, _ = self.env.step(0)
-
-    if self.display:
-      self.env.render()
-
-    if from_random_game == False:
-      self._add_history(screen)
-      self.lives = self.env.ale.lives()
-
-    # history, reward, terminal
-    return self.history, 0, False
+    if self.lives == 0:
+      self._screen = self.env.reset()
+    self._step(0)
+    self.render()
+    return self.screen, 0, 0, self.terminal
 
   def new_random_game(self):
-    screen, reward, terminal = self.new_game(True)
+    self.new_game(True)
+    for _ in xrange(random.randint(0, self.random_start - 1)):
+      self._step(0)
+    self.render()
+    return self.screen, 0, 0, self.terminal
 
-    for idx in range(random.randrange(self.max_random_start)):
-      screen, reward, terminal, _ = self.env.step(0)
+  def _step(self, action):
+    self._screen, self.reward, self.terminal, _ = self.env.step(action)
 
-      if terminal: logger.warning("WARNING: Terminal signal received after %d 0-steps", idx)
+  def _random_step(self):
+    action = self.env.action_space.sample()
+    self._step(action)
 
-    if self.display:
-      self.env.render()
-
-    self._add_history(screen)
-    self.lives = self.env.ale.lives()
-
-    # history, reward, terminal
-    return self.history, 0, False
-
-  def step(self, action, is_training):
-    if action == -1:
-      # Step with random action
-      action = self.env.action_space.sample()
-
-    cumulated_reward = 0
-
-    for _ in range(self.n_action_repeat):
-      screen, reward, terminal, _ = self.env.step(action)
-      cumulated_reward += reward
-      current_lives = self.env.ale.lives()
-
-      if is_training and self.lives > current_lives:
-        terminal = True
-
-      if terminal: break
-
-    if self.display:
-      self.env.render()
-
-    if not terminal:
-      self._add_history(screen)
-      self.lives = current_lives
-
-    return self.history, reward, terminal
-
-  def _add_history(self, raw_screen):
-    y = 0.2126 * raw_screen[:, :, 0] + 0.7152 * raw_screen[:, :, 1] + 0.0722 * raw_screen[:, :, 2]
+  @ property
+  def screen(self):
+    y = 0.2126 * self._screen[:, :, 0] + 0.7152 * self._screen[:, :, 1] + 0.0722 * self._screen[:, :, 2]
     y = y.astype(np.uint8)
-    y_screen = imresize(y, (self.screen_height, self.screen_width))
+    return imresize(y, self.dims)
 
-    if self.data_format == 'NCHW':
-      self.history[:-1] = self.history[1:]
-      self.history[-1] = y_screen
-    elif self.data_format == 'NHWC':
-      self.history[:,:,:-1] = self.history[:,:,1:]
-      self.history[:,:,-1] = y_screen
-    else:
-      raise ValueError("unknown data_format : %s" % self.data_format)
+  @property
+  def action_size(self):
+    return self.env.action_space.n
+
+  @property
+  def lives(self):
+    return self.env.ale.lives()
+
+  @property
+  def state(self):
+    return self.screen, self.reward, self.terminal
+
+  def render(self):
+    if self.display:
+      self.env.render()
+
+  def after_act(self, action):
+    self.render()
+
+class GymEnvironment(Environment):
+  def __init__(self, config):
+    super(GymEnvironment, self).__init__(config)
+
+  def act(self, action, is_training=True):
+    cumulated_reward = 0
+    start_lives = self.lives
+
+    for _ in xrange(self.action_repeat):
+      self._step(action)
+      cumulated_reward = cumulated_reward + self.reward
+
+      if is_training and start_lives > self.lives:
+        cumulated_reward -= 1
+        self.terminal = True
+
+      if self.terminal:
+        break
+
+    self.reward = cumulated_reward
+
+    self.after_act(action)
+    return self.state
+
+class SimpleGymEnvironment(Environment):
+  def __init__(self, config):
+    super(SimpleGymEnvironment, self).__init__(config)
+
+  def act(self, action, is_training=True):
+    self._step(action)
+
+    self.after_act(action)
+    return self.state
